@@ -20,7 +20,7 @@
     "add": "Voeg dokumente by",
     "filter": "Filter",
     "metadata": "Wysig metadata",
-    "dropHint": "Laat TXT / MD lêers val",
+    "dropHint": "Laat TXT / MD / PDF / DOCX lêers val",
     "empty": "Geen dokumente",
     "selected": "Gekies",
     "allDocuments": "Alle dokumente",
@@ -211,8 +211,8 @@
     "tutorial": {
       "import": {
         "title": "1. Voeg dokumente by",
-        "body": "Laat TXT- of Markdown-lêers in die korpus-paneel val. Hulle word die aktiewe plaaslike korpus.",
-        "note": "PDF- en DOCX-invoer is vir die Python-sidecar ontwerp. Sleep-en-los is tans vir tekslêers geoptimaliseer."
+        "body": "Laat TXT-, Markdown-, PDF- of DOCX-lêers in die korpus-paneel val. Hulle word die aktiewe plaaslike korpus.",
+        "note": "PDF- en DOCX-teksonttrekking loop deur die Python-sidecar. In blaaieralleen-modus kan TXT-, Markdown-, CSV- en TSV-lêers steeds ingevoer word."
       },
       "metadata": {
         "title": "2. Hersien metadata",

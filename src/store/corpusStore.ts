@@ -1,5 +1,6 @@
 import { create } from 'zustand';
-import type { CorpusDocument, SupportedLanguage } from '../types';
+import { ingestFiles, isSupportedIngestFile } from '../lib/ingest';
+import type { CorpusDocument } from '../types';
 import { useProcessStore } from './processStore';
 
 interface CorpusStore {
@@ -16,19 +17,6 @@ interface CorpusStore {
   restoreCorpus: (documents: CorpusDocument[], selectedIds?: string[]) => void;
 }
 
-const id = () =>
-  typeof crypto !== 'undefined' && 'randomUUID' in crypto
-    ? crypto.randomUUID()
-    : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
-
-const detectLanguage = (filename: string, content: string): SupportedLanguage => {
-  const lower = filename.toLowerCase();
-  if (lower.endsWith('.fr.txt')) return 'fr';
-  if (lower.endsWith('.af.txt')) return 'af';
-  if (/[ぁ-んァ-ン一-龥]/.test(content)) return 'ja';
-  return 'en';
-};
-
 export const useCorpusStore = create<CorpusStore>((set) => ({
   documents: [],
   selectedIds: [],
@@ -36,30 +24,48 @@ export const useCorpusStore = create<CorpusStore>((set) => ({
   setFilter: (filter) => set({ filter }),
   addDocuments: async (files) => {
     const startedAt = performance.now();
+    const supportedFiles = files.filter(isSupportedIngestFile);
+    const unsupportedFiles = files.filter((file) => !isSupportedIngestFile(file)).map((file) => file.name);
+
     useProcessStore.getState().addLog({
       level: 'info',
       stage: 'corpus.ingest',
       title: 'Reading local files',
-      detail: `${files.length} file(s) queued for browser-side text ingestion.`,
+      detail: `${supportedFiles.length} file(s) queued for corpus ingestion.`,
       data: {
         filenames: files.map((file) => file.name),
+        unsupportedFiles,
       },
     });
 
-    const documents = await Promise.all(
-      files.map(async (file) => {
-        const content = await file.text();
-        return {
-          id: id(),
-          filename: file.name,
-          content,
-          metadata: {
-            tags: [],
-            language: detectLanguage(file.name, content),
-          },
-        } satisfies CorpusDocument;
-      }),
-    );
+    if (!supportedFiles.length) {
+      useProcessStore.getState().addLog({
+        level: 'warning',
+        stage: 'corpus.ingest',
+        title: 'No supported documents found',
+        detail: 'BKI accepts TXT, MD, CSV, TSV, PDF, and DOCX files.',
+        data: { unsupportedFiles },
+      });
+      return;
+    }
+
+    const result = await ingestFiles(supportedFiles);
+    const { documents } = result;
+
+    if (!documents.length) {
+      useProcessStore.getState().addLog({
+        level: 'error',
+        stage: 'corpus.ingest',
+        title: 'No documents were loaded',
+        detail: 'The selected files could not be converted into text documents.',
+        data: {
+          backend: result.backend,
+          errors: result.errors,
+          unsupportedFiles,
+        },
+      });
+      return;
+    }
 
     set((state) => ({
       documents: [...documents, ...state.documents],
@@ -72,6 +78,9 @@ export const useCorpusStore = create<CorpusStore>((set) => ({
       title: 'Documents added to corpus store',
       detail: `${documents.length} document(s) loaded in ${Math.round(performance.now() - startedAt)}ms.`,
       data: {
+        backend: result.backend,
+        errors: result.errors,
+        unsupportedFiles,
         documents: documents.map((document) => ({
           id: document.id,
           filename: document.filename,

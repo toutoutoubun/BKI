@@ -20,7 +20,7 @@
     "add": "Add Documents",
     "filter": "Filter",
     "metadata": "Edit Metadata",
-    "dropHint": "Drop TXT / MD files",
+    "dropHint": "Drop TXT / MD / PDF / DOCX files",
     "empty": "No documents",
     "selected": "Selected",
     "allDocuments": "All documents",
@@ -211,8 +211,8 @@
     "tutorial": {
       "import": {
         "title": "1. Add Documents",
-        "body": "Drop TXT or Markdown files into the corpus pane. Added documents become the active local corpus in memory.",
-        "note": "PDF and DOCX ingestion is designed for the Python sidecar. The current drag-and-drop path is optimized for text files."
+        "body": "Drop TXT, Markdown, PDF, or DOCX files into the corpus pane. Added documents become the active local corpus in memory.",
+        "note": "PDF and DOCX text extraction runs through the Python sidecar. In browser-only mode, TXT, Markdown, CSV, and TSV files can still be imported."
       },
       "metadata": {
         "title": "2. Review Metadata",

@@ -20,7 +20,7 @@
     "add": "Ajouter des documents",
     "filter": "Filtrer",
     "metadata": "Modifier les métadonnées",
-    "dropHint": "Déposer des fichiers TXT / MD",
+    "dropHint": "Déposer des fichiers TXT / MD / PDF / DOCX",
     "empty": "Aucun document",
     "selected": "Sélection",
     "allDocuments": "Tous les documents",
@@ -211,8 +211,8 @@
     "tutorial": {
       "import": {
         "title": "1. Ajouter des documents",
-        "body": "Déposez des fichiers TXT ou Markdown dans le panneau de corpus. Les documents ajoutés deviennent le corpus local actif.",
-        "note": "L'import PDF et DOCX est prévu côté sidecar Python. Le glisser-déposer actuel est optimisé pour les fichiers texte."
+        "body": "Déposez des fichiers TXT, Markdown, PDF ou DOCX dans le panneau de corpus. Les documents ajoutés deviennent le corpus local actif.",
+        "note": "L'extraction de texte PDF et DOCX passe par le sidecar Python. En mode navigateur seul, les fichiers TXT, Markdown, CSV et TSV restent importables."
       },
       "metadata": {
         "title": "2. Vérifier les métadonnées",

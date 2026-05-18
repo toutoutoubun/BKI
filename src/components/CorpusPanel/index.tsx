@@ -53,7 +53,7 @@ function CorpusPanel() {
   const selectedDocument = documents.find((doc) => selectedIds.includes(doc.id));
 
   const handleFiles = async (fileList: FileList | File[]) => {
-    const files = Array.from(fileList).filter((file) => /\.(txt|md)$/i.test(file.name) || file.type.startsWith('text/'));
+    const files = Array.from(fileList);
     if (files.length) await addDocuments(files);
   };
 
@@ -100,7 +100,7 @@ function CorpusPanel() {
         <input
           ref={inputRef}
           type="file"
-          accept=".txt,.md,text/plain,text/markdown"
+          accept=".txt,.md,.csv,.tsv,.pdf,.docx,text/plain,text/markdown,text/csv,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
           multiple
           onChange={(event) => {
             if (event.target.files) void handleFiles(event.target.files);
@@ -223,4 +223,3 @@ function CorpusPanel() {
 }
 
 export default CorpusPanel;
-

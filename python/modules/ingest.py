@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import base64
+import tempfile
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
@@ -34,20 +36,10 @@ def _detect_language(content: str) -> str:
         return "en"
 
 
-def _read_path(path: Path) -> dict[str, Any]:
-    suffix = path.suffix.lower()
-    if suffix in {".txt", ".md", ".csv", ".tsv"}:
-        content = path.read_text(encoding="utf-8", errors="replace")
-    elif suffix == ".pdf":
-        content = _read_pdf(path)
-    elif suffix == ".docx":
-        content = _read_docx(path)
-    else:
-        content = path.read_text(encoding="utf-8", errors="replace")
-
+def _document(filename: str, content: str) -> dict[str, Any]:
     return {
         "id": str(uuid4()),
-        "filename": path.name,
+        "filename": filename,
         "content": content,
         "metadata": {
             "tags": [],
@@ -56,8 +48,57 @@ def _read_path(path: Path) -> dict[str, Any]:
     }
 
 
+def _read_document_path(path: Path) -> str:
+    suffix = path.suffix.lower()
+    if suffix in {".txt", ".md", ".csv", ".tsv"}:
+        return path.read_text(encoding="utf-8", errors="replace")
+    if suffix == ".pdf":
+        return _read_pdf(path)
+    if suffix == ".docx":
+        return _read_docx(path)
+    return path.read_text(encoding="utf-8", errors="replace")
+
+
+def _read_path(path: Path) -> dict[str, Any]:
+    return _document(path.name, _read_document_path(path))
+
+
+def _read_bytes(filename: str, content_bytes: bytes) -> dict[str, Any]:
+    suffix = Path(filename).suffix.lower()
+    if suffix in {".txt", ".md", ".csv", ".tsv"}:
+        content = content_bytes.decode("utf-8", errors="replace")
+    else:
+        with tempfile.NamedTemporaryFile(suffix=suffix or ".txt", delete=True) as temp_file:
+            temp_file.write(content_bytes)
+            temp_file.flush()
+            content = _read_document_path(Path(temp_file.name))
+
+    return _document(filename, content)
+
+
 def run(payload: dict[str, Any]) -> dict[str, Any]:
     paths = [Path(path).expanduser() for path in payload.get("paths", [])]
-    docs = [_read_path(path) for path in paths if path.exists()]
-    return {"documents": docs, "count": len(docs)}
+    docs: list[dict[str, Any]] = []
+    errors: list[dict[str, str]] = []
 
+    for path in paths:
+        if not path.exists():
+            errors.append({"filename": path.name, "error": "file not found"})
+            continue
+        try:
+            docs.append(_read_path(path))
+        except Exception as exc:  # noqa: BLE001
+            errors.append({"filename": path.name, "error": str(exc)})
+
+    for item in payload.get("files", []):
+        filename = str(item.get("filename") or "document.txt")
+        encoded = item.get("content_base64")
+        if not isinstance(encoded, str):
+            errors.append({"filename": filename, "error": "missing base64 content"})
+            continue
+        try:
+            docs.append(_read_bytes(filename, base64.b64decode(encoded, validate=True)))
+        except Exception as exc:  # noqa: BLE001
+            errors.append({"filename": filename, "error": str(exc)})
+
+    return {"documents": docs, "count": len(docs), "errors": errors}

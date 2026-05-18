@@ -20,7 +20,7 @@
     "add": "文書を追加",
     "filter": "フィルタ",
     "metadata": "メタデータ編集",
-    "dropHint": "TXT / MD をドロップ",
+    "dropHint": "TXT / MD / PDF / DOCX をドロップ",
     "empty": "文書がありません",
     "selected": "選択中",
     "allDocuments": "全文書",
@@ -211,8 +211,8 @@
     "tutorial": {
       "import": {
         "title": "1. 文書を追加する",
-        "body": "左側のコーパス欄にTXTまたはMarkdownファイルをドロップします。追加された文書は即座にローカルメモリ上のコーパスとして扱われます。",
-        "note": "PDFやDOCXはPythonサイドカーのingest機能側で扱う設計です。現在の画面D&Dはテキスト系ファイルに最適化されています。"
+        "body": "左側のコーパス欄にTXT、Markdown、PDF、DOCXファイルをドロップします。追加された文書は即座にローカルメモリ上のコーパスとして扱われます。",
+        "note": "PDFやDOCXはPythonサイドカーでテキスト抽出します。ブラウザ環境のみの場合はTXT、Markdown、CSV、TSVを読み込めます。"
       },
       "metadata": {
         "title": "2. メタデータを整える",
