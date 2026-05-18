@@ -1,0 +1,14 @@
+node_modules/
+dist/
+dist-ssr/
+target/
+.DS_Store
+*.log
+.env
+.env.local
+*.tsbuildinfo
+vite.config.js
+vite.config.d.ts
+python/.venv/
+python/__pycache__/
+python/modules/__pycache__/

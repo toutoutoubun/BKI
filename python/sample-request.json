@@ -1,0 +1,2 @@
+{"command":"frequency","payload":{"documents":[{"id":"sample-1","filename":"sample.txt","content":"BKI helps researchers read BKI corpora deeply.","metadata":{"date":"2026-05-18","tags":[],"language":"en"}}],"keywords":{"BKI":["BKI"],"research":["researchers","corpora"]},"group_by":"document"}}
+
