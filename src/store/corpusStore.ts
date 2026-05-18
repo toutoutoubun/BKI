@@ -9,6 +9,7 @@ interface CorpusStore {
   setFilter: (filter: string) => void;
   addDocuments: (files: File[]) => Promise<void>;
   updateMetadata: (id: string, meta: Partial<CorpusDocument['metadata']>) => void;
+  replaceDocuments: (documents: CorpusDocument[]) => void;
   removeDocument: (id: string) => void;
   toggleSelected: (id: string) => void;
   setSelectedIds: (ids: string[]) => void;
@@ -95,6 +96,13 @@ export const useCorpusStore = create<CorpusStore>((set) => ({
           : doc,
       ),
     })),
+  replaceDocuments: (documents) =>
+    set((state) => {
+      const replacements = new Map(documents.map((document) => [document.id, document]));
+      return {
+        documents: state.documents.map((document) => replacements.get(document.id) ?? document),
+      };
+    }),
   removeDocument: (id) =>
     set((state) => ({
       documents: state.documents.filter((doc) => doc.id !== id),

@@ -14,6 +14,7 @@ from modules import (
     ner,
     persistence,
     pos,
+    preprocess,
     sentiment,
     similarity,
     tfidf,
@@ -39,6 +40,7 @@ DISPATCH = {
     "get_credits": credits.run,
     "save_sqlite_project": persistence.save_project,
     "load_sqlite_project": persistence.load_project,
+    "preprocess": preprocess.run,
 }
 
 

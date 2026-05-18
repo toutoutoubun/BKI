@@ -49,7 +49,22 @@
     "stemming": "Stem words",
     "status": "Status",
     "documentCount": "Documents",
-    "totalCharacters": "Total characters"
+    "totalCharacters": "Total characters",
+    "running": "Running",
+    "backend": "Backend",
+    "backendPython": "Python sidecar",
+    "backendBrowser": "Browser fallback",
+    "changedDocuments": "Changed documents",
+    "processedCharacters": "Processed characters",
+    "removedStopwords": "Removed stopwords",
+    "stemmedTerms": "Stemmed terms",
+    "preview": "Preprocess preview",
+    "before": "Before",
+    "after": "After",
+    "error": "Preprocess error",
+    "noDocuments": "No documents to preprocess",
+    "annotationWarningTitle": "Check annotation ranges",
+    "annotationWarning": "{{count}} annotation(s) exist on the target documents. Changing text may require reviewing existing character offsets."
   },
   "qda": {
     "title": "Qualitative Analysis",
@@ -96,6 +111,22 @@
     "cooccurrence": "Co-occurrence",
     "tfidf": "TF-IDF",
     "sentiment": "Sentiment"
+  },
+  "mining": {
+    "title": "Text Mining",
+    "analysis": "Analysis",
+    "kwic": "KWIC",
+    "query": "Query",
+    "terms": "Terms",
+    "window": "Context window",
+    "topN": "Top terms",
+    "lexicon": "Sentiment lexicon (word, score)",
+    "noResult": "No text mining results",
+    "left": "Left context",
+    "keyword": "Keyword",
+    "right": "Right context",
+    "weight": "Weight",
+    "defaultTarget": "Target"
   },
   "export": {
     "title": "Export",
@@ -191,7 +222,7 @@
       "preprocess": {
         "title": "3. Check Preprocessing",
         "body": "The preprocess tab collects settings such as normalization, lowercasing, punctuation cleanup, stopword removal, and stemming.",
-        "note": "This is currently a configuration surface. The processing path can be connected to the Python sidecar as the app grows."
+        "note": "Running preprocessing updates the target document text and records the result in the process log and preview."
       },
       "qda": {
         "title": "4. Code Qualitatively",
@@ -217,7 +248,7 @@
       },
       "preprocess": {
         "title": "Preprocessing",
-        "body": "Review text normalization choices before analysis. This panel is the configuration surface for future sidecar processing.",
+        "body": "Run normalization, lowercasing, punctuation cleanup, stopword removal, and stemming before analysis.",
         "action": "For mixed-language corpora, check each document's language metadata first."
       },
       "qda": {

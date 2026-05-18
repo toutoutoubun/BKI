@@ -54,6 +54,45 @@ export interface KwicHit {
   offset: number;
 }
 
+export interface PreprocessOptions {
+  normalize: boolean;
+  lowercase: boolean;
+  punctuation: boolean;
+  stopwords: boolean;
+  stemming: boolean;
+}
+
+export interface PreprocessDocumentStats {
+  document_id: string;
+  filename: string;
+  language?: SupportedLanguage;
+  original_characters: number;
+  processed_characters: number;
+  changed: boolean;
+  removed_stopwords: number;
+  stemmed_terms: number;
+  stemming_fallback: boolean;
+}
+
+export interface PreprocessStats {
+  document_count: number;
+  changed_documents: number;
+  original_characters: number;
+  processed_characters: number;
+  character_delta: number;
+  removed_stopwords: number;
+  stemmed_terms: number;
+  stemming_fallback: boolean;
+  per_document: PreprocessDocumentStats[];
+  options: PreprocessOptions;
+}
+
+export interface PreprocessResult {
+  documents: CorpusDocument[];
+  stats: PreprocessStats;
+  backend?: 'python' | 'browser';
+}
+
 export interface PythonResponse<T> {
   error?: string;
   data?: T;

@@ -49,7 +49,22 @@
     "stemming": "Stam woorde",
     "status": "Status",
     "documentCount": "Dokumente",
-    "totalCharacters": "Totale karakters"
+    "totalCharacters": "Totale karakters",
+    "running": "Loop",
+    "backend": "Agterkant",
+    "backendPython": "Python-sidecar",
+    "backendBrowser": "Blaaier-terugval",
+    "changedDocuments": "Gewysigde dokumente",
+    "processedCharacters": "Verwerkte karakters",
+    "removedStopwords": "Verwyderde stopwoorde",
+    "stemmedTerms": "Gestamde terme",
+    "preview": "Voorverwerkingvoorskou",
+    "before": "Voor",
+    "after": "Na",
+    "error": "Voorverwerkingsfout",
+    "noDocuments": "Geen dokumente om te verwerk nie",
+    "annotationWarningTitle": "Kontroleer annotasiereekse",
+    "annotationWarning": "{{count}} annotasie(s) bestaan op die teikendokumente. Tekswysigings kan vereis dat bestaande karakterverplasings hersien word."
   },
   "qda": {
     "title": "Kwalitatiewe analise",
@@ -96,6 +111,22 @@
     "cooccurrence": "Saamvoorkoms",
     "tfidf": "TF-IDF",
     "sentiment": "Sentiment"
+  },
+  "mining": {
+    "title": "Teksontginning",
+    "analysis": "Analise",
+    "kwic": "KWIC",
+    "query": "Navraag",
+    "terms": "Terme",
+    "window": "Konteksvenster",
+    "topN": "Topterme",
+    "lexicon": "Sentimentleksikon (woord, telling)",
+    "noResult": "Geen teksontginningresultate nie",
+    "left": "Linkerkonteks",
+    "keyword": "Sleutelwoord",
+    "right": "Regterkonteks",
+    "weight": "Gewig",
+    "defaultTarget": "Teiken"
   },
   "export": {
     "title": "Uitvoer",
@@ -191,7 +222,7 @@
       "preprocess": {
         "title": "3. Gaan voorverwerking na",
         "body": "Die voorverwerking-oortjie groepeer normalisering, kleinletters, leestekens, stopwoorde en stemming.",
-        "note": "Hierdie paneel is 'n konfigurasie-oppervlak wat later aan die Python-sidecar gekoppel kan word."
+        "note": "Wanneer dit loop, werk dit die teikenteks by en teken die resultaat in die proseslog en voorskou aan."
       },
       "qda": {
         "title": "4. Doen kwalitatiewe kodering",
@@ -217,7 +248,7 @@
       },
       "preprocess": {
         "title": "Voorverwerking",
-        "body": "Hersien normaliseringskeuses voor analise.",
+        "body": "Begin normalisering, kleinletters, leestekenskoonmaak, stopwoordverwydering en stemming voor analise.",
         "action": "Vir gemengde tale, kontroleer eers elke dokument se taalmetadata."
       },
       "qda": {

@@ -49,7 +49,22 @@
     "stemming": "Racinisation",
     "status": "État",
     "documentCount": "Documents",
-    "totalCharacters": "Caractères totaux"
+    "totalCharacters": "Caractères totaux",
+    "running": "Traitement",
+    "backend": "Environnement",
+    "backendPython": "Sidecar Python",
+    "backendBrowser": "Secours navigateur",
+    "changedDocuments": "Documents modifiés",
+    "processedCharacters": "Caractères traités",
+    "removedStopwords": "Mots vides retirés",
+    "stemmedTerms": "Termes racinisés",
+    "preview": "Aperçu du prétraitement",
+    "before": "Avant",
+    "after": "Après",
+    "error": "Erreur de prétraitement",
+    "noDocuments": "Aucun document à prétraiter",
+    "annotationWarningTitle": "Vérifier les plages d'annotation",
+    "annotationWarning": "{{count}} annotation(s) existent sur les documents ciblés. Modifier le texte peut nécessiter de revoir les offsets existants."
   },
   "qda": {
     "title": "Analyse qualitative",
@@ -96,6 +111,22 @@
     "cooccurrence": "Cooccurrence",
     "tfidf": "TF-IDF",
     "sentiment": "Sentiment"
+  },
+  "mining": {
+    "title": "Text mining",
+    "analysis": "Analyse",
+    "kwic": "KWIC",
+    "query": "Requête",
+    "terms": "Termes",
+    "window": "Fenêtre de contexte",
+    "topN": "Termes principaux",
+    "lexicon": "Lexique de sentiment (mot, score)",
+    "noResult": "Aucun résultat de text mining",
+    "left": "Contexte gauche",
+    "keyword": "Mot-clé",
+    "right": "Contexte droit",
+    "weight": "Poids",
+    "defaultTarget": "Cible"
   },
   "export": {
     "title": "Export",
@@ -191,7 +222,7 @@
       "preprocess": {
         "title": "3. Contrôler le prétraitement",
         "body": "L'onglet de prétraitement regroupe normalisation, minuscules, ponctuation, mots vides et racinisation.",
-        "note": "Ce panneau est surtout une surface de configuration, extensible vers le sidecar Python."
+        "note": "L'exécution met à jour le texte ciblé et consigne le résultat dans le journal et l'aperçu."
       },
       "qda": {
         "title": "4. Coder qualitativement",
@@ -217,7 +248,7 @@
       },
       "preprocess": {
         "title": "Prétraitement",
-        "body": "Vérifiez les choix de normalisation avant l'analyse.",
+        "body": "Exécutez normalisation, minuscules, ponctuation, retrait des mots vides et racinisation avant l'analyse.",
         "action": "Pour un corpus multilingue, contrôlez d'abord la langue de chaque document."
       },
       "qda": {

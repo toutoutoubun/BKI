@@ -49,7 +49,22 @@
     "stemming": "語幹化",
     "status": "状態",
     "documentCount": "文書数",
-    "totalCharacters": "総文字数"
+    "totalCharacters": "総文字数",
+    "running": "処理中",
+    "backend": "実行環境",
+    "backendPython": "Pythonサイドカー",
+    "backendBrowser": "ブラウザ内フォールバック",
+    "changedDocuments": "変更された文書",
+    "processedCharacters": "処理後文字数",
+    "removedStopwords": "除去したストップワード",
+    "stemmedTerms": "語幹化した語",
+    "preview": "前処理プレビュー",
+    "before": "処理前",
+    "after": "処理後",
+    "error": "前処理エラー",
+    "noDocuments": "前処理する文書がありません",
+    "annotationWarningTitle": "注釈の範囲に注意",
+    "annotationWarning": "対象文書に {{count}} 件の注釈があります。本文を変更すると既存の文字オフセットを確認し直す必要があります。"
   },
   "qda": {
     "title": "質的分析",
@@ -96,6 +111,22 @@
     "cooccurrence": "共起分析",
     "tfidf": "TF-IDF",
     "sentiment": "センチメント"
+  },
+  "mining": {
+    "title": "テキストマイニング",
+    "analysis": "分析",
+    "kwic": "KWIC",
+    "query": "検索語",
+    "terms": "語句",
+    "window": "文脈幅",
+    "topN": "表示語数",
+    "lexicon": "評価語辞書（word, score）",
+    "noResult": "テキストマイニング結果がありません",
+    "left": "左文脈",
+    "keyword": "キーワード",
+    "right": "右文脈",
+    "weight": "重み",
+    "defaultTarget": "対象語"
   },
   "export": {
     "title": "出力",
@@ -191,7 +222,7 @@
       "preprocess": {
         "title": "3. 前処理を確認する",
         "body": "前処理タブでは、正規化、小文字化、句読点整理、ストップワード除去などの設定を確認します。",
-        "note": "現段階では処理設定のUIが中心です。今後の実処理はPythonサイドカーに接続して拡張できます。"
+        "note": "実行すると対象文書の本文が更新され、変更内容は処理ログとプレビューで確認できます。"
       },
       "qda": {
         "title": "4. 質的分析を行う",
@@ -217,7 +248,7 @@
       },
       "preprocess": {
         "title": "前処理",
-        "body": "分析前にテキストの正規化方針を確認します。今後、実処理をサイドカーに接続するための設定面です。",
+        "body": "分析前にテキストの正規化、小文字化、句読点整理、ストップワード除去、語幹化を実行できます。",
         "action": "日本語・英語が混在する場合は、文書ごとの言語メタデータを先に確認してください。"
       },
       "qda": {

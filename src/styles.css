@@ -484,6 +484,22 @@ button {
   white-space: pre-wrap;
 }
 
+.warning-row {
+  border-color: #edc878;
+  background: #fff9ea;
+}
+
+.warning-row strong {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: #7a5200;
+}
+
+.preview-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
 .annotation-grid {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
@@ -865,6 +881,7 @@ button {
   .nlp-grid,
   .guide-sections,
   .annotation-grid,
+  .preview-grid,
   .code-checkbox-grid {
     grid-template-columns: 1fr;
   }
