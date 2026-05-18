@@ -2,6 +2,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { Brain, Play } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useProcessStore } from '../../store/processStore';
 import type { CorpusDocument } from '../../types';
 
 type NlpCommand = 'ner' | 'topic_model' | 'similarity' | 'pos' | 'dependency' | 'lexical_stats';
@@ -78,6 +79,7 @@ function renderPreview(command: NlpCommand, result: unknown, t: (key: string) =>
 
 function NlpPanel({ documents }: Props) {
   const { t } = useTranslation();
+  const addLog = useProcessStore((state) => state.addLog);
   const [command, setCommand] = useState<NlpCommand>('ner');
   const [language, setLanguage] = useState('en');
   const [selectedEntities, setSelectedEntities] = useState(entityTypes);
@@ -102,14 +104,57 @@ function NlpPanel({ documents }: Props) {
   };
 
   const run = async () => {
+    const requestPayload = payload();
+    const startedAt = performance.now();
     setIsRunning(true);
     setError(undefined);
+    addLog({
+      level: 'info',
+      stage: `nlp.${command}`,
+      title: 'NLP sidecar command requested',
+      detail: 'Sending analysis settings and corpus summaries to the Python sidecar.',
+      data: {
+        command,
+        documentCount: documents.length,
+        language,
+        options:
+          command === 'ner'
+            ? { entityTypes: selectedEntities }
+            : command === 'pos'
+              ? { posTags: selectedPosTags }
+              : command === 'topic_model'
+                ? { topicCount }
+                : command === 'dependency'
+                  ? { targetEntity }
+                  : command === 'similarity'
+                    ? { queryDocumentId: activeDocumentId }
+                    : {},
+      },
+    });
+
     try {
-      const response = await invoke('run_python', { command, payload: payload() });
+      const response = await invoke('run_python', { command, payload: requestPayload });
       setResult(response);
+      addLog({
+        level: 'success',
+        stage: `nlp.${command}`,
+        title: 'NLP command completed',
+        detail: `Completed in ${Math.round(performance.now() - startedAt)}ms.`,
+        data: {
+          resultCount: resultCount(command, response),
+          fallback: Boolean((response as Record<string, unknown>)?.fallback),
+        },
+      });
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : String(caught));
+      const message = caught instanceof Error ? caught.message : String(caught);
+      setError(message);
       setResult(undefined);
+      addLog({
+        level: 'error',
+        stage: `nlp.${command}`,
+        title: 'NLP command failed',
+        detail: message,
+      });
     } finally {
       setIsRunning(false);
     }

@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import type { Annotation, Code } from '../types';
+import { useProcessStore } from './processStore';
 
 interface CodingStore {
   codes: Code[];
@@ -10,6 +11,7 @@ interface CodingStore {
   addAnnotation: (ann: Omit<Annotation, 'id'>) => void;
   updateAnnotation: (id: string, patch: Partial<Annotation>) => void;
   removeAnnotation: (id: string) => void;
+  restoreCoding: (codes: Code[], annotations: Annotation[]) => void;
 }
 
 const id = () =>
@@ -27,7 +29,21 @@ export const useCodingStore = create<CodingStore>((set) => ({
     },
   ],
   annotations: [],
-  addCode: (code) => set((state) => ({ codes: [...state.codes, { ...code, id: id() }] })),
+  addCode: (code) => {
+    const nextCode = { ...code, id: id() };
+    set((state) => ({ codes: [...state.codes, nextCode] }));
+    useProcessStore.getState().addLog({
+      level: 'success',
+      stage: 'qda.code',
+      title: 'Code created',
+      detail: `${nextCode.label} was added to the codebook.`,
+      data: {
+        codeId: nextCode.id,
+        label: nextCode.label,
+        color: nextCode.color,
+      },
+    });
+  },
   updateCode: (id, patch) =>
     set((state) => ({
       codes: state.codes.map((code) => (code.id === id ? { ...code, ...patch } : code)),
@@ -40,7 +56,23 @@ export const useCodingStore = create<CodingStore>((set) => ({
         codeIds: ann.codeIds.filter((codeId) => codeId !== id),
       })),
     })),
-  addAnnotation: (ann) => set((state) => ({ annotations: [...state.annotations, { ...ann, id: id() }] })),
+  addAnnotation: (ann) => {
+    const nextAnnotation = { ...ann, id: id() };
+    set((state) => ({ annotations: [...state.annotations, nextAnnotation] }));
+    useProcessStore.getState().addLog({
+      level: 'success',
+      stage: 'qda.annotation',
+      title: 'Text range coded',
+      detail: `Created annotation ${nextAnnotation.start}-${nextAnnotation.end}.`,
+      data: {
+        annotationId: nextAnnotation.id,
+        documentId: nextAnnotation.documentId,
+        start: nextAnnotation.start,
+        end: nextAnnotation.end,
+        codeCount: nextAnnotation.codeIds.length,
+      },
+    });
+  },
   updateAnnotation: (id, patch) =>
     set((state) => ({
       annotations: state.annotations.map((ann) => (ann.id === id ? { ...ann, ...patch } : ann)),
@@ -49,5 +81,5 @@ export const useCodingStore = create<CodingStore>((set) => ({
     set((state) => ({
       annotations: state.annotations.filter((ann) => ann.id !== id),
     })),
+  restoreCoding: (codes, annotations) => set({ codes, annotations }),
 }));
-

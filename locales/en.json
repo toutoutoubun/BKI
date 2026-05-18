@@ -65,7 +65,18 @@
     "start": "Start",
     "end": "End",
     "noCodes": "No codes",
-    "noAnnotations": "No annotations"
+    "noAnnotations": "No annotations",
+    "selectionCoding": "Code Selected Text",
+    "codeSelection": "Code Selection",
+    "documentText": "Document Text",
+    "applyCodes": "Codes to Apply",
+    "selectedText": "Selected Text",
+    "codeAnalysis": "Code Analysis",
+    "annotationCount": "Annotations",
+    "documentCount": "Documents",
+    "characterCount": "Characters",
+    "memoCount": "Memos",
+    "codeDocumentMatrix": "Code × Document"
   },
   "quant": {
     "frequency": "Keyword Frequency",
@@ -92,7 +103,20 @@
     "csv": "Summary CSV",
     "stellarPath": "Stellar Folder",
     "stellarHint": "Local export path",
+    "importProject": "Import Project",
+    "importSuccess": ".bki project imported",
+    "importError": "Could not import .bki project",
     "downloadProject": "Export Project",
+    "sqlitePersistence": "SQLite Persistence",
+    "sqliteHint": "Saves to Documents/BKI/bki.sqlite",
+    "savePersistent": "Save to SQLite",
+    "loadPersistent": "Restore from SQLite",
+    "persistentSaveSuccess": "Saved to SQLite: {{path}}",
+    "persistentSaveFallback": "Saved to browser storage",
+    "persistentLoadSuccess": "Restored from SQLite: {{path}}",
+    "persistentLoadFallback": "Restored from browser storage",
+    "persistentLoadMissing": "No saved project was found",
+    "persistentError": "Persistence operation failed",
     "downloadCsv": "Export CSV",
     "noResult": "No summary results"
   },
@@ -120,5 +144,107 @@
     "nonCommercial": "Non-Commercial",
     "licenseUnknown": "License Unknown",
     "bibtex": "BibTeX"
+  },
+  "status": {
+    "localProject": "Local Project",
+    "documents": "documents",
+    "selected": "selected",
+    "localOnly": "Local processing"
+  },
+  "process": {
+    "title": "Process Log",
+    "subtitle": "Shows internal steps, sidecar calls, and fallback behavior.",
+    "open": "Show process log",
+    "close": "Close",
+    "clear": "Clear log",
+    "empty": "No process events yet",
+    "modeActive": "Process log visible",
+    "level": {
+      "info": "Info",
+      "success": "Done",
+      "warning": "Warning",
+      "error": "Error"
+    }
+  },
+  "guide": {
+    "title": "Tutorial and User Guide",
+    "open": "Open user guide",
+    "close": "Close",
+    "tutorialTab": "Tutorial",
+    "guideTab": "User Guide",
+    "progress": "Tutorial progress",
+    "stepLabel": "{{current}} / {{total}}",
+    "previous": "Back",
+    "next": "Next",
+    "finish": "Start",
+    "tutorial": {
+      "import": {
+        "title": "1. Add Documents",
+        "body": "Drop TXT or Markdown files into the corpus pane. Added documents become the active local corpus in memory.",
+        "note": "PDF and DOCX ingestion is designed for the Python sidecar. The current drag-and-drop path is optimized for text files."
+      },
+      "metadata": {
+        "title": "2. Review Metadata",
+        "body": "Use the edit icon on a document row to enter date, author, category, tags, and language. Timeline and category analysis rely on these fields.",
+        "note": "Use YYYY-MM-DD dates for stable monthly and yearly grouping."
+      },
+      "preprocess": {
+        "title": "3. Check Preprocessing",
+        "body": "The preprocess tab collects settings such as normalization, lowercasing, punctuation cleanup, stopword removal, and stemming.",
+        "note": "This is currently a configuration surface. The processing path can be connected to the Python sidecar as the app grows."
+      },
+      "qda": {
+        "title": "4. Code Qualitatively",
+        "body": "Create codes and attach annotations to character ranges. The data model supports multiple codes on one annotation.",
+        "note": "Start with a small set of broad codes, then refine them into a hierarchy later."
+      },
+      "quant": {
+        "title": "5. Run Quantitative and NLP Analysis",
+        "body": "Use keyword frequency for grouped term counts. The NLP panel can run NER, topic modeling, similarity, POS, dependency, and lexical statistics.",
+        "note": "When Python models are unavailable, BKI returns the best available fallback results."
+      },
+      "export": {
+        "title": "6. Export and Inspect Processing",
+        "body": "Export .bki projects and CSV summaries from the export tab. Use the process log button to inspect what happened internally.",
+        "note": "BKI is local-first. The process log records summaries needed for traceability, not full document text."
+      }
+    },
+    "sections": {
+      "corpus": {
+        "title": "Corpus Management",
+        "body": "Add, select, filter, and edit metadata in the left pane. When documents are selected, analysis uses that selection.",
+        "action": "Start with two or three small text files, then add dates and categories."
+      },
+      "preprocess": {
+        "title": "Preprocessing",
+        "body": "Review text normalization choices before analysis. This panel is the configuration surface for future sidecar processing.",
+        "action": "For mixed-language corpora, check each document's language metadata first."
+      },
+      "qda": {
+        "title": "Qualitative Analysis",
+        "body": "Create codes, annotate ranges, and record memos for interpretive decisions.",
+        "action": "Begin with three to five broad categories, then refine them later."
+      },
+      "quant": {
+        "title": "Keyword Frequency",
+        "body": "Group search terms and count them by month, year, document, or category. Results appear as a line chart.",
+        "action": "Put spelling variants and synonyms in one group to track concepts rather than individual spellings."
+      },
+      "nlp": {
+        "title": "NLP Analysis",
+        "body": "Run NER, topic modeling, similarity, POS, dependency, and lexical statistics through the Python sidecar.",
+        "action": "Check the process log for fallback status when language models are not installed."
+      },
+      "process": {
+        "title": "Process Log",
+        "body": "Inspect starts, sidecar calls, completions, errors, and fallback behavior in chronological order.",
+        "action": "When results look surprising, first check the target document count and settings."
+      },
+      "export": {
+        "title": "Export",
+        "body": "Save the full project as .bki and export frequency tables as CSV. You can also manage the Stellar export path.",
+        "action": "Export a .bki file at research milestones to preserve reproducibility."
+      }
+    }
   }
 }

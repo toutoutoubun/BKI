@@ -1,7 +1,7 @@
 {
   "app": {
     "name": "BKI",
-    "tagline": "文書を、深く読む",
+    "tagline": "",
     "settings": "設定",
     "language": "言語",
     "tabs": "分析タブ"
@@ -65,7 +65,18 @@
     "start": "開始",
     "end": "終了",
     "noCodes": "コードがありません",
-    "noAnnotations": "注釈がありません"
+    "noAnnotations": "注釈がありません",
+    "selectionCoding": "選択テキストのコード付け",
+    "codeSelection": "選択範囲をコード付け",
+    "documentText": "文書本文",
+    "applyCodes": "適用するコード",
+    "selectedText": "選択中のテキスト",
+    "codeAnalysis": "コード分析",
+    "annotationCount": "注釈数",
+    "documentCount": "文書数",
+    "characterCount": "文字数",
+    "memoCount": "メモ数",
+    "codeDocumentMatrix": "コード×文書"
   },
   "quant": {
     "frequency": "キーワード頻度",
@@ -92,7 +103,20 @@
     "csv": "集計CSV",
     "stellarPath": "Stellarフォルダ",
     "stellarHint": "ローカル書き出し先",
+    "importProject": "プロジェクトを読み込む",
+    "importSuccess": ".bkiプロジェクトを読み込みました",
+    "importError": ".bkiプロジェクトを読み込めませんでした",
     "downloadProject": "プロジェクトを書き出す",
+    "sqlitePersistence": "SQLite永続化",
+    "sqliteHint": "Documents/BKI/bki.sqlite に保存します",
+    "savePersistent": "SQLiteに保存",
+    "loadPersistent": "SQLiteから復元",
+    "persistentSaveSuccess": "SQLiteに保存しました: {{path}}",
+    "persistentSaveFallback": "ブラウザ内ストレージに保存しました",
+    "persistentLoadSuccess": "SQLiteから復元しました: {{path}}",
+    "persistentLoadFallback": "ブラウザ内ストレージから復元しました",
+    "persistentLoadMissing": "保存済みプロジェクトが見つかりません",
+    "persistentError": "永続化処理に失敗しました",
     "downloadCsv": "CSVを書き出す",
     "noResult": "集計結果がありません"
   },
@@ -120,5 +144,107 @@
     "nonCommercial": "非商用",
     "licenseUnknown": "ライセンス不明",
     "bibtex": "BibTeX"
+  },
+  "status": {
+    "localProject": "ローカルプロジェクト",
+    "documents": "文書",
+    "selected": "選択",
+    "localOnly": "ローカル処理"
+  },
+  "process": {
+    "title": "処理ログ",
+    "subtitle": "アプリ内部の処理手順、サイドカー呼び出し、フォールバックを表示します。",
+    "open": "処理ログを表示",
+    "close": "閉じる",
+    "clear": "ログを消去",
+    "empty": "まだ処理ログはありません",
+    "modeActive": "処理ログ表示中",
+    "level": {
+      "info": "情報",
+      "success": "完了",
+      "warning": "注意",
+      "error": "エラー"
+    }
+  },
+  "guide": {
+    "title": "チュートリアルと使い方ガイド",
+    "open": "使い方ガイドを開く",
+    "close": "閉じる",
+    "tutorialTab": "チュートリアル",
+    "guideTab": "使い方ガイド",
+    "progress": "チュートリアルの進行状況",
+    "stepLabel": "{{current}} / {{total}}",
+    "previous": "戻る",
+    "next": "次へ",
+    "finish": "始める",
+    "tutorial": {
+      "import": {
+        "title": "1. 文書を追加する",
+        "body": "左側のコーパス欄にTXTまたはMarkdownファイルをドロップします。追加された文書は即座にローカルメモリ上のコーパスとして扱われます。",
+        "note": "PDFやDOCXはPythonサイドカーのingest機能側で扱う設計です。現在の画面D&Dはテキスト系ファイルに最適化されています。"
+      },
+      "metadata": {
+        "title": "2. メタデータを整える",
+        "body": "文書行の編集アイコンから、日付、著者、カテゴリ、タグ、言語を入力します。時系列分析やカテゴリ別集計はこのメタデータを使います。",
+        "note": "日付はYYYY-MM-DD形式にしておくと、月別・年別の集計が安定します。"
+      },
+      "preprocess": {
+        "title": "3. 前処理を確認する",
+        "body": "前処理タブでは、正規化、小文字化、句読点整理、ストップワード除去などの設定を確認します。",
+        "note": "現段階では処理設定のUIが中心です。今後の実処理はPythonサイドカーに接続して拡張できます。"
+      },
+      "qda": {
+        "title": "4. 質的分析を行う",
+        "body": "質的分析タブでコードを作成し、文書の範囲に注釈を付けます。複数コードの重ねがけに対応できるデータ構造です。",
+        "note": "コード体系を先に作ってから注釈を追加すると、NVivo/MAXQDAに近い流れで整理できます。"
+      },
+      "quant": {
+        "title": "5. 量的分析とNLPを実行する",
+        "body": "量的分析タブではキーワード頻度を実行できます。NLP分析パネルからNER、トピックモデル、類似度、品詞、依存関係、語彙統計も試せます。",
+        "note": "Pythonモデルが未導入の場合も、可能な範囲でフォールバック処理を返します。"
+      },
+      "export": {
+        "title": "6. 出力と処理ログを確認する",
+        "body": "出力タブから.bkiプロジェクトやCSVを保存できます。ヘッダーの処理ログボタンを押すと、内部でどの処理が走ったか確認できます。",
+        "note": "BKIはローカルファースト設計です。処理ログにも本文全文ではなく、処理追跡に必要な要約だけを記録します。"
+      }
+    },
+    "sections": {
+      "corpus": {
+        "title": "コーパス管理",
+        "body": "文書の追加、選択、絞り込み、メタデータ編集を左ペインで行います。複数選択時は選択文書が分析対象になります。",
+        "action": "まず小さなテキストファイルを2〜3件追加して、日付とカテゴリを入力してください。"
+      },
+      "preprocess": {
+        "title": "前処理",
+        "body": "分析前にテキストの正規化方針を確認します。今後、実処理をサイドカーに接続するための設定面です。",
+        "action": "日本語・英語が混在する場合は、文書ごとの言語メタデータを先に確認してください。"
+      },
+      "qda": {
+        "title": "質的分析",
+        "body": "コードを作成し、文書範囲に注釈を付けます。メモを残すことで解釈や判断理由を記録できます。",
+        "action": "最初は大きなカテゴリを3〜5個作り、後から階層化する運用が扱いやすいです。"
+      },
+      "quant": {
+        "title": "キーワード頻度",
+        "body": "検索語をグループ化し、月・年・文書・カテゴリ単位で頻度を集計します。結果は折れ線グラフで確認できます。",
+        "action": "同義語や表記ゆれは同じグループに入れると、研究上の概念単位で追跡できます。"
+      },
+      "nlp": {
+        "title": "NLP分析",
+        "body": "固有表現、トピックモデル、類似度、品詞、依存関係、語彙統計をPythonサイドカー経由で実行します。",
+        "action": "モデル未導入時はフォールバック結果になるため、処理ログでfallbackの有無を確認してください。"
+      },
+      "process": {
+        "title": "処理ログ",
+        "body": "内部処理の開始、サイドカー呼び出し、完了、エラー、フォールバックを時系列で確認できます。",
+        "action": "結果が想定と違うときは、まず処理ログで対象文書数と設定値を見てください。"
+      },
+      "export": {
+        "title": "出力",
+        "body": "プロジェクト全体を.bkiとして保存し、頻度表はCSVとして書き出せます。Stellarフォルダの出力先も管理できます。",
+        "action": "分析の節目ごとに.bkiを書き出しておくと、研究過程の再現性を保ちやすくなります。"
+      }
+    }
   }
 }

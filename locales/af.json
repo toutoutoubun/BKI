@@ -65,7 +65,18 @@
     "start": "Begin",
     "end": "Einde",
     "noCodes": "Geen kodes",
-    "noAnnotations": "Geen annotasies"
+    "noAnnotations": "Geen annotasies",
+    "selectionCoding": "Kodeer gekose teks",
+    "codeSelection": "Kodeer keuse",
+    "documentText": "Dokumentteks",
+    "applyCodes": "Kodes om toe te pas",
+    "selectedText": "Gekose teks",
+    "codeAnalysis": "Kode-analise",
+    "annotationCount": "Annotasies",
+    "documentCount": "Dokumente",
+    "characterCount": "Karakters",
+    "memoCount": "Memo's",
+    "codeDocumentMatrix": "Kode × dokument"
   },
   "quant": {
     "frequency": "Sleutelwoordfrekwensie",
@@ -92,7 +103,20 @@
     "csv": "Opsomming CSV",
     "stellarPath": "Stellar-lêergids",
     "stellarHint": "Plaaslike uitvoerpad",
+    "importProject": "Voer projek in",
+    "importSuccess": ".bki-projek ingevoer",
+    "importError": "Kon nie .bki-projek invoer nie",
     "downloadProject": "Voer projek uit",
+    "sqlitePersistence": "SQLite-volharding",
+    "sqliteHint": "Stoor na Documents/BKI/bki.sqlite",
+    "savePersistent": "Stoor na SQLite",
+    "loadPersistent": "Herstel van SQLite",
+    "persistentSaveSuccess": "Na SQLite gestoor: {{path}}",
+    "persistentSaveFallback": "Na blaaierberging gestoor",
+    "persistentLoadSuccess": "Van SQLite herstel: {{path}}",
+    "persistentLoadFallback": "Van blaaierberging herstel",
+    "persistentLoadMissing": "Geen gestoorde projek gevind nie",
+    "persistentError": "Volhardingsaksie het misluk",
     "downloadCsv": "Voer CSV uit",
     "noResult": "Geen opsommingresultate"
   },
@@ -120,5 +144,107 @@
     "nonCommercial": "Nie-kommersieel",
     "licenseUnknown": "Lisensie onbekend",
     "bibtex": "BibTeX"
+  },
+  "status": {
+    "localProject": "Plaaslike projek",
+    "documents": "dokumente",
+    "selected": "gekies",
+    "localOnly": "Plaaslike verwerking"
+  },
+  "process": {
+    "title": "Proseslog",
+    "subtitle": "Wys interne stappe, sidecar-oproepe en terugvalgedrag.",
+    "open": "Wys proseslog",
+    "close": "Maak toe",
+    "clear": "Maak log skoon",
+    "empty": "Nog geen prosesgebeure nie",
+    "modeActive": "Proseslog sigbaar",
+    "level": {
+      "info": "Info",
+      "success": "Klaar",
+      "warning": "Waarskuwing",
+      "error": "Fout"
+    }
+  },
+  "guide": {
+    "title": "Tutoriaal en gebruikersgids",
+    "open": "Maak gebruikersgids oop",
+    "close": "Maak toe",
+    "tutorialTab": "Tutoriaal",
+    "guideTab": "Gids",
+    "progress": "Tutoriaalvordering",
+    "stepLabel": "{{current}} / {{total}}",
+    "previous": "Terug",
+    "next": "Volgende",
+    "finish": "Begin",
+    "tutorial": {
+      "import": {
+        "title": "1. Voeg dokumente by",
+        "body": "Laat TXT- of Markdown-lêers in die korpus-paneel val. Hulle word die aktiewe plaaslike korpus.",
+        "note": "PDF- en DOCX-invoer is vir die Python-sidecar ontwerp. Sleep-en-los is tans vir tekslêers geoptimaliseer."
+      },
+      "metadata": {
+        "title": "2. Hersien metadata",
+        "body": "Gebruik die wysig-ikoon om datum, outeur, kategorie, merkers en taal in te voer.",
+        "note": "Gebruik YYYY-MM-DD vir stabiele maand- en jaargroepering."
+      },
+      "preprocess": {
+        "title": "3. Gaan voorverwerking na",
+        "body": "Die voorverwerking-oortjie groepeer normalisering, kleinletters, leestekens, stopwoorde en stemming.",
+        "note": "Hierdie paneel is 'n konfigurasie-oppervlak wat later aan die Python-sidecar gekoppel kan word."
+      },
+      "qda": {
+        "title": "4. Doen kwalitatiewe kodering",
+        "body": "Skep kodes en heg annotasies aan karakterreekse. Een annotasie kan meer as een kode hê.",
+        "note": "Begin met 'n klein stel breë kodes en verfyn later."
+      },
+      "quant": {
+        "title": "5. Begin kwantitatiewe en NLP-analise",
+        "body": "Gebruik sleutelwoordfrekwensie en die NLP-paneel vir NER, onderwerpe, ooreenkoms, POS, afhanklikhede en leksikale statistiek.",
+        "note": "As Python-modelle ontbreek, gee BKI die beste beskikbare terugvalresultate."
+      },
+      "export": {
+        "title": "6. Voer uit en inspekteer",
+        "body": "Voer .bki-projekte en CSV's uit. Die proseslog wys wat intern gebeur het.",
+        "note": "BKI is plaaslik-eerste. Die log hou opsommings vir naspeurbaarheid, nie volle dokumentteks nie."
+      }
+    },
+    "sections": {
+      "corpus": {
+        "title": "Korpusbestuur",
+        "body": "Voeg by, kies, filter en wysig metadata in die linkerpaneel.",
+        "action": "Begin met twee of drie klein tekslêers en voeg datums en kategorieë by."
+      },
+      "preprocess": {
+        "title": "Voorverwerking",
+        "body": "Hersien normaliseringskeuses voor analise.",
+        "action": "Vir gemengde tale, kontroleer eers elke dokument se taalmetadata."
+      },
+      "qda": {
+        "title": "Kwalitatiewe analise",
+        "body": "Skep kodes, annoteer reekse en hou memo's.",
+        "action": "Begin met drie tot vyf breë kategorieë."
+      },
+      "quant": {
+        "title": "Sleutelwoordfrekwensie",
+        "body": "Groepeer terme en tel hulle volgens maand, jaar, dokument of kategorie.",
+        "action": "Plaas variante en sinonieme in een groep om konsepte te volg."
+      },
+      "nlp": {
+        "title": "NLP-analise",
+        "body": "Begin NER, onderwerpe, ooreenkoms, POS, afhanklikhede en statistiek deur die Python-sidecar.",
+        "action": "Kyk in die proseslog of 'n terugvalpad gebruik is."
+      },
+      "process": {
+        "title": "Proseslog",
+        "body": "Inspekteer beginpunte, sidecar-oproepe, voltooiing, foute en terugvalgedrag.",
+        "action": "As resultate vreemd lyk, kyk eers na dokumenttelling en instellings."
+      },
+      "export": {
+        "title": "Uitvoer",
+        "body": "Stoor die projek as .bki en frekwensietabelle as CSV.",
+        "action": "Voer 'n .bki uit by belangrike navorsingstappe."
+      }
+    }
   }
 }

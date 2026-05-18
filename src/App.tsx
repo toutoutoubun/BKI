@@ -1,13 +1,17 @@
-import { BarChart3, FileDown, FlaskConical, Languages, Settings, Tags } from 'lucide-react';
+import { Activity, BarChart3, BookOpen, FileDown, FlaskConical, Languages, Settings, Tags } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import AboutModal from './components/AboutModal';
 import CorpusPanel from './components/CorpusPanel';
 import ExportTab from './components/ExportTab';
+import GuideModal from './components/GuideModal';
+import PersistenceBridge from './components/PersistenceBridge';
+import ProcessInspector from './components/ProcessInspector';
 import PreprocessTab from './components/PreprocessTab';
 import QdaTab from './components/QdaTab';
 import QuantTab from './components/QuantTab';
 import { useCorpusStore } from './store/corpusStore';
+import { useProcessStore } from './store/processStore';
 
 type TabId = 'preprocess' | 'qualitative' | 'quantitative' | 'export';
 
@@ -22,8 +26,11 @@ function App() {
   const { t, i18n } = useTranslation();
   const [activeTab, setActiveTab] = useState<TabId>('preprocess');
   const [isAboutOpen, setIsAboutOpen] = useState(false);
+  const [isGuideOpen, setIsGuideOpen] = useState(() => localStorage.getItem('bki.guide.seen') !== 'true');
   const documents = useCorpusStore((state) => state.documents);
   const selectedIds = useCorpusStore((state) => state.selectedIds);
+  const isProcessOpen = useProcessStore((state) => state.isOpen);
+  const toggleProcessOpen = useProcessStore((state) => state.toggleOpen);
 
   const tabs = useMemo(
     () =>
@@ -44,14 +51,30 @@ function App() {
     await i18n.changeLanguage(language);
   };
 
+  const closeGuide = () => {
+    localStorage.setItem('bki.guide.seen', 'true');
+    setIsGuideOpen(false);
+  };
+
   return (
     <div className="app-shell">
+      <PersistenceBridge />
       <header className="app-header">
         <div className="brand">
           <strong>{t('app.name')}</strong>
-          <span>{t('app.tagline')}</span>
         </div>
         <div className="header-actions">
+          <button className="icon-button" type="button" title={t('guide.open')} onClick={() => setIsGuideOpen(true)}>
+            <BookOpen size={18} />
+          </button>
+          <button
+            className={isProcessOpen ? 'icon-button active' : 'icon-button'}
+            type="button"
+            title={t('process.open')}
+            onClick={toggleProcessOpen}
+          >
+            <Activity size={18} />
+          </button>
           <button className="icon-button" type="button" title={t('app.settings')} onClick={() => setIsAboutOpen(true)}>
             <Settings size={18} />
           </button>
@@ -95,6 +118,15 @@ function App() {
           </div>
         </section>
       </main>
+      <footer className="status-bar">
+        <span>{t('status.localProject')}</span>
+        <span>{documents.length} {t('status.documents')}</span>
+        <span>{selectedIds.length} {t('status.selected')}</span>
+        <span>{t('status.localOnly')}</span>
+        {isProcessOpen && <span>{t('process.modeActive')}</span>}
+      </footer>
+      {isProcessOpen && <ProcessInspector />}
+      {isGuideOpen && <GuideModal onClose={closeGuide} />}
       {isAboutOpen && <AboutModal onClose={() => setIsAboutOpen(false)} />}
     </div>
   );

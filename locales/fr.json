@@ -65,7 +65,18 @@
     "start": "Début",
     "end": "Fin",
     "noCodes": "Aucun code",
-    "noAnnotations": "Aucune annotation"
+    "noAnnotations": "Aucune annotation",
+    "selectionCoding": "Coder le texte sélectionné",
+    "codeSelection": "Coder la sélection",
+    "documentText": "Texte du document",
+    "applyCodes": "Codes à appliquer",
+    "selectedText": "Texte sélectionné",
+    "codeAnalysis": "Analyse des codes",
+    "annotationCount": "Annotations",
+    "documentCount": "Documents",
+    "characterCount": "Caractères",
+    "memoCount": "Mémos",
+    "codeDocumentMatrix": "Code × document"
   },
   "quant": {
     "frequency": "Fréquence des mots-clés",
@@ -92,7 +103,20 @@
     "csv": "CSV récapitulatif",
     "stellarPath": "Dossier Stellar",
     "stellarHint": "Chemin local d'export",
+    "importProject": "Importer le projet",
+    "importSuccess": "Projet .bki importé",
+    "importError": "Impossible d'importer le projet .bki",
     "downloadProject": "Exporter le projet",
+    "sqlitePersistence": "Persistance SQLite",
+    "sqliteHint": "Enregistre dans Documents/BKI/bki.sqlite",
+    "savePersistent": "Enregistrer SQLite",
+    "loadPersistent": "Restaurer SQLite",
+    "persistentSaveSuccess": "Enregistré dans SQLite : {{path}}",
+    "persistentSaveFallback": "Enregistré dans le stockage du navigateur",
+    "persistentLoadSuccess": "Restauré depuis SQLite : {{path}}",
+    "persistentLoadFallback": "Restauré depuis le stockage du navigateur",
+    "persistentLoadMissing": "Aucun projet enregistré n'a été trouvé",
+    "persistentError": "L'opération de persistance a échoué",
     "downloadCsv": "Exporter le CSV",
     "noResult": "Aucun résultat récapitulatif"
   },
@@ -120,5 +144,107 @@
     "nonCommercial": "Non commercial",
     "licenseUnknown": "Licence inconnue",
     "bibtex": "BibTeX"
+  },
+  "status": {
+    "localProject": "Projet local",
+    "documents": "documents",
+    "selected": "sélectionnés",
+    "localOnly": "Traitement local"
+  },
+  "process": {
+    "title": "Journal de traitement",
+    "subtitle": "Affiche les étapes internes, les appels sidecar et les bascules de secours.",
+    "open": "Afficher le journal",
+    "close": "Fermer",
+    "clear": "Effacer le journal",
+    "empty": "Aucun événement pour le moment",
+    "modeActive": "Journal visible",
+    "level": {
+      "info": "Info",
+      "success": "Terminé",
+      "warning": "Avertissement",
+      "error": "Erreur"
+    }
+  },
+  "guide": {
+    "title": "Tutoriel et guide d'utilisation",
+    "open": "Ouvrir le guide",
+    "close": "Fermer",
+    "tutorialTab": "Tutoriel",
+    "guideTab": "Guide",
+    "progress": "Progression du tutoriel",
+    "stepLabel": "{{current}} / {{total}}",
+    "previous": "Retour",
+    "next": "Suivant",
+    "finish": "Commencer",
+    "tutorial": {
+      "import": {
+        "title": "1. Ajouter des documents",
+        "body": "Déposez des fichiers TXT ou Markdown dans le panneau de corpus. Les documents ajoutés deviennent le corpus local actif.",
+        "note": "L'import PDF et DOCX est prévu côté sidecar Python. Le glisser-déposer actuel est optimisé pour les fichiers texte."
+      },
+      "metadata": {
+        "title": "2. Vérifier les métadonnées",
+        "body": "Utilisez l'icône d'édition pour saisir date, auteur, catégorie, étiquettes et langue. Les analyses temporelles et par catégorie utilisent ces champs.",
+        "note": "Le format YYYY-MM-DD stabilise les regroupements mensuels et annuels."
+      },
+      "preprocess": {
+        "title": "3. Contrôler le prétraitement",
+        "body": "L'onglet de prétraitement regroupe normalisation, minuscules, ponctuation, mots vides et racinisation.",
+        "note": "Ce panneau est surtout une surface de configuration, extensible vers le sidecar Python."
+      },
+      "qda": {
+        "title": "4. Coder qualitativement",
+        "body": "Créez des codes et attachez des annotations à des plages de caractères. Une annotation peut recevoir plusieurs codes.",
+        "note": "Commencez par quelques catégories larges, puis affinez la hiérarchie."
+      },
+      "quant": {
+        "title": "5. Lancer les analyses quantitatives et NLP",
+        "body": "Utilisez la fréquence des mots-clés et le panneau NLP pour NER, thèmes, similarité, POS, dépendances et statistiques lexicales.",
+        "note": "Si les modèles Python manquent, BKI renvoie des résultats de secours quand c'est possible."
+      },
+      "export": {
+        "title": "6. Exporter et inspecter",
+        "body": "Exportez les projets .bki et les CSV depuis l'onglet Export. Le journal de traitement montre ce qui s'est passé en interne.",
+        "note": "BKI est local-first. Le journal conserve des résumés de traçabilité, pas le texte complet."
+      }
+    },
+    "sections": {
+      "corpus": {
+        "title": "Gestion du corpus",
+        "body": "Ajoutez, sélectionnez, filtrez et éditez les métadonnées dans le panneau gauche.",
+        "action": "Commencez avec deux ou trois petits fichiers texte, puis ajoutez dates et catégories."
+      },
+      "preprocess": {
+        "title": "Prétraitement",
+        "body": "Vérifiez les choix de normalisation avant l'analyse.",
+        "action": "Pour un corpus multilingue, contrôlez d'abord la langue de chaque document."
+      },
+      "qda": {
+        "title": "Analyse qualitative",
+        "body": "Créez des codes, annotez des plages et gardez des mémos.",
+        "action": "Démarrez avec trois à cinq catégories larges."
+      },
+      "quant": {
+        "title": "Fréquence des mots-clés",
+        "body": "Regroupez les termes et comptez-les par mois, année, document ou catégorie.",
+        "action": "Regroupez variantes et synonymes pour suivre des concepts."
+      },
+      "nlp": {
+        "title": "Analyse NLP",
+        "body": "Exécutez NER, thèmes, similarité, POS, dépendances et statistiques via le sidecar Python.",
+        "action": "Consultez le journal pour voir si un mode de secours a été utilisé."
+      },
+      "process": {
+        "title": "Journal de traitement",
+        "body": "Inspectez les appels, fins, erreurs et bascules de secours.",
+        "action": "Si un résultat surprend, vérifiez le nombre de documents et les paramètres."
+      },
+      "export": {
+        "title": "Export",
+        "body": "Sauvegardez le projet en .bki et les tableaux en CSV.",
+        "action": "Exportez un .bki aux étapes importantes de la recherche."
+      }
+    }
   }
 }

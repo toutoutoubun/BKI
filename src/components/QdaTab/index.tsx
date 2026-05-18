@@ -1,15 +1,32 @@
 import { Plus, Trash2 } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useCodingStore } from '../../store/codingStore';
-import type { CorpusDocument } from '../../types';
+import type { Annotation, CorpusDocument } from '../../types';
 
 interface Props {
   documents: CorpusDocument[];
 }
 
+interface CodeSummary {
+  codeId: string;
+  label: string;
+  color: string;
+  annotationCount: number;
+  documentCount: number;
+  characterCount: number;
+  memoCount: number;
+}
+
+function clampRange(start: number, end: number, contentLength: number) {
+  const safeStart = Math.max(0, Math.min(start, contentLength));
+  const safeEnd = Math.max(safeStart, Math.min(end, contentLength));
+  return { safeStart, safeEnd };
+}
+
 function QdaTab({ documents }: Props) {
   const { t } = useTranslation();
+  const textRef = useRef<HTMLTextAreaElement>(null);
   const codes = useCodingStore((state) => state.codes);
   const annotations = useCodingStore((state) => state.annotations);
   const addCode = useCodingStore((state) => state.addCode);
@@ -24,10 +41,59 @@ function QdaTab({ documents }: Props) {
   const [start, setStart] = useState(0);
   const [end, setEnd] = useState(120);
   const [memo, setMemo] = useState('');
+  const [selectedCodeIds, setSelectedCodeIds] = useState<string[]>(codes[0]?.id ? [codes[0].id] : []);
 
   const selectedDocument = useMemo(
     () => documents.find((document) => document.id === documentId) ?? documents[0],
     [documentId, documents],
+  );
+
+  useEffect(() => {
+    if (!selectedDocument && documents[0]) setDocumentId(documents[0].id);
+  }, [documents, selectedDocument]);
+
+  useEffect(() => {
+    setSelectedCodeIds((current) => {
+      const valid = current.filter((codeId) => codes.some((code) => code.id === codeId));
+      if (valid.length) return valid;
+      return codes[0]?.id ? [codes[0].id] : [];
+    });
+  }, [codes]);
+
+  const documentAnnotations = useMemo(
+    () => annotations.filter((annotation) => annotation.documentId === selectedDocument?.id),
+    [annotations, selectedDocument?.id],
+  );
+
+  const selectedText = selectedDocument?.content.slice(start, end) ?? '';
+
+  const codeSummaries = useMemo<CodeSummary[]>(
+    () =>
+      codes.map((code) => {
+        const codeAnnotations = annotations.filter((annotation) => annotation.codeIds.includes(code.id));
+        return {
+          codeId: code.id,
+          label: code.label,
+          color: code.color,
+          annotationCount: codeAnnotations.length,
+          documentCount: new Set(codeAnnotations.map((annotation) => annotation.documentId)).size,
+          characterCount: codeAnnotations.reduce((sum, annotation) => sum + Math.max(0, annotation.end - annotation.start), 0),
+          memoCount: codeAnnotations.filter((annotation) => annotation.memo?.trim()).length,
+        };
+      }),
+    [annotations, codes],
+  );
+
+  const codeDocumentMatrix = useMemo(
+    () =>
+      codes.map((code) => ({
+        code,
+        counts: documents.map((document) => ({
+          document,
+          count: annotations.filter((annotation) => annotation.documentId === document.id && annotation.codeIds.includes(code.id)).length,
+        })),
+      })),
+    [annotations, codes, documents],
   );
 
   const submitCode = () => {
@@ -37,17 +103,46 @@ function QdaTab({ documents }: Props) {
     setDescription('');
   };
 
+  const updateSelectionFromTextarea = () => {
+    const element = textRef.current;
+    if (!element || !selectedDocument) return;
+    if (element.selectionStart === element.selectionEnd) return;
+    const { safeStart, safeEnd } = clampRange(element.selectionStart, element.selectionEnd, selectedDocument.content.length);
+    setStart(safeStart);
+    setEnd(safeEnd);
+  };
+
+  const toggleCodeSelection = (codeId: string) => {
+    setSelectedCodeIds((current) => {
+      if (current.includes(codeId)) return current.filter((id) => id !== codeId);
+      return [...current, codeId];
+    });
+  };
+
   const submitAnnotation = () => {
-    if (!selectedDocument || codes.length === 0) return;
+    if (!selectedDocument || selectedCodeIds.length === 0) return;
+    const { safeStart, safeEnd } = clampRange(start, end, selectedDocument.content.length);
+    if (safeStart === safeEnd) return;
     addAnnotation({
       documentId: selectedDocument.id,
-      start: Math.max(0, start),
-      end: Math.max(start, end),
-      codeIds: [codes[0].id],
+      start: safeStart,
+      end: safeEnd,
+      codeIds: selectedCodeIds,
       memo: memo.trim() || undefined,
     });
     setMemo('');
   };
+
+  const annotationCodes = (annotation: Annotation) =>
+    annotation.codeIds
+      .map((codeId) => codes.find((code) => code.id === codeId))
+      .filter((code): code is NonNullable<typeof code> => Boolean(code))
+      .map((code) => (
+        <span className="code-pill" key={code.id} style={{ borderColor: code.color }}>
+          <span className="color-chip small" style={{ background: code.color }} />
+          {code.label}
+        </span>
+      ));
 
   return (
     <div className="work-grid">
@@ -93,10 +188,10 @@ function QdaTab({ documents }: Props) {
 
       <section className="panel">
         <div className="panel-header">
-          <h2 className="section-title">{t('qda.annotations')}</h2>
-          <button className="primary-button" type="button" onClick={submitAnnotation}>
+          <h2 className="section-title">{t('qda.selectionCoding')}</h2>
+          <button className="primary-button" type="button" disabled={!selectedText || selectedCodeIds.length === 0} onClick={submitAnnotation}>
             <Plus size={17} />
-            {t('common.add')}
+            {t('qda.codeSelection')}
           </button>
         </div>
         <div className="panel-body">
@@ -110,6 +205,18 @@ function QdaTab({ documents }: Props) {
               ))}
             </select>
           </label>
+
+          <label className="field">
+            <span>{t('qda.documentText')}</span>
+            <textarea
+              ref={textRef}
+              className="text-area qda-document-text"
+              readOnly
+              value={selectedDocument?.content ?? ''}
+              onSelect={updateSelectionFromTextarea}
+            />
+          </label>
+
           <div className="field-grid">
             <label className="field">
               <span>{t('qda.start')}</span>
@@ -120,29 +227,118 @@ function QdaTab({ documents }: Props) {
               <input className="text-input" type="number" value={end} onChange={(event) => setEnd(Number(event.target.value))} />
             </label>
           </div>
+
+          <div className="field">
+            <span>{t('qda.applyCodes')}</span>
+            <div className="code-checkbox-grid">
+              {codes.map((code) => (
+                <label className="checkbox-row" key={code.id}>
+                  <input type="checkbox" checked={selectedCodeIds.includes(code.id)} onChange={() => toggleCodeSelection(code.id)} />
+                  <span className="color-chip small" style={{ background: code.color }} />
+                  <span>{code.label}</span>
+                </label>
+              ))}
+            </div>
+          </div>
+
           <label className="field">
             <span>{t('qda.memo')}</span>
             <textarea className="text-area" value={memo} onChange={(event) => setMemo(event.target.value)} />
           </label>
-          {selectedDocument && <div className="muted">{selectedDocument.content.slice(start, end)}</div>}
 
-          {annotations.length === 0 && <div className="empty-state">{t('qda.noAnnotations')}</div>}
-          {annotations.map((annotation) => {
-            const doc = documents.find((document) => document.id === annotation.documentId);
-            return (
-              <div className="result-row" key={annotation.id}>
-                <strong>{doc?.filename ?? annotation.documentId}</strong>
-                <span className="muted">
-                  {t('qda.range')}: {annotation.start}-{annotation.end}
-                </span>
-                <span>{annotation.memo ?? t('common.none')}</span>
-                <button className="danger-button" type="button" onClick={() => removeAnnotation(annotation.id)}>
-                  <Trash2 size={16} />
-                  {t('common.delete')}
-                </button>
-              </div>
-            );
-          })}
+          <div className="selection-preview">
+            <strong>{t('qda.selectedText')}</strong>
+            <p>{selectedText || t('qda.noSelection')}</p>
+          </div>
+        </div>
+      </section>
+
+      <section className="panel span-all">
+        <div className="panel-header">
+          <h2 className="section-title">{t('qda.annotations')}</h2>
+          <span className="muted">{documentAnnotations.length} {t('qda.annotations')}</span>
+        </div>
+        <div className="panel-body annotation-grid">
+          {documentAnnotations.length === 0 && <div className="empty-state">{t('qda.noAnnotations')}</div>}
+          {documentAnnotations.map((annotation) => (
+            <div className="result-row" key={annotation.id}>
+              <div className="toolbar">{annotationCodes(annotation)}</div>
+              <span className="muted">
+                {t('qda.range')}: {annotation.start}-{annotation.end}
+              </span>
+              <span>{selectedDocument?.content.slice(annotation.start, annotation.end) ?? ''}</span>
+              <span className="muted">{annotation.memo ?? t('common.none')}</span>
+              <button className="danger-button" type="button" onClick={() => removeAnnotation(annotation.id)}>
+                <Trash2 size={16} />
+                {t('common.delete')}
+              </button>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <section className="panel span-all">
+        <div className="panel-header">
+          <h2 className="section-title">{t('qda.codeAnalysis')}</h2>
+        </div>
+        <div className="panel-body">
+          <div className="table-wrap">
+            <table className="analysis-table">
+              <thead>
+                <tr>
+                  <th>{t('qda.codeLabel')}</th>
+                  <th>{t('qda.annotationCount')}</th>
+                  <th>{t('qda.documentCount')}</th>
+                  <th>{t('qda.characterCount')}</th>
+                  <th>{t('qda.memoCount')}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {codeSummaries.map((summary) => (
+                  <tr key={summary.codeId}>
+                    <td>
+                      <span className="code-pill" style={{ borderColor: summary.color }}>
+                        <span className="color-chip small" style={{ background: summary.color }} />
+                        {summary.label}
+                      </span>
+                    </td>
+                    <td>{summary.annotationCount}</td>
+                    <td>{summary.documentCount}</td>
+                    <td>{summary.characterCount}</td>
+                    <td>{summary.memoCount}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          <div className="table-wrap">
+            <table className="analysis-table">
+              <thead>
+                <tr>
+                  <th>{t('qda.codeDocumentMatrix')}</th>
+                  {documents.map((document) => (
+                    <th key={document.id}>{document.filename}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {codeDocumentMatrix.map((row) => (
+                  <tr key={row.code.id}>
+                    <td>
+                      <span className="code-pill" style={{ borderColor: row.code.color }}>
+                        <span className="color-chip small" style={{ background: row.code.color }} />
+                        {row.code.label}
+                      </span>
+                    </td>
+                    {row.counts.map(({ document, count }) => (
+                      <td key={document.id}>{count}</td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       </section>
     </div>
@@ -150,4 +346,3 @@ function QdaTab({ documents }: Props) {
 }
 
 export default QdaTab;
-

@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import type { CorpusDocument, SupportedLanguage } from '../types';
+import { useProcessStore } from './processStore';
 
 interface CorpusStore {
   documents: CorpusDocument[];
@@ -11,6 +12,7 @@ interface CorpusStore {
   removeDocument: (id: string) => void;
   toggleSelected: (id: string) => void;
   setSelectedIds: (ids: string[]) => void;
+  restoreCorpus: (documents: CorpusDocument[], selectedIds?: string[]) => void;
 }
 
 const id = () =>
@@ -32,6 +34,17 @@ export const useCorpusStore = create<CorpusStore>((set) => ({
   filter: '',
   setFilter: (filter) => set({ filter }),
   addDocuments: async (files) => {
+    const startedAt = performance.now();
+    useProcessStore.getState().addLog({
+      level: 'info',
+      stage: 'corpus.ingest',
+      title: 'Reading local files',
+      detail: `${files.length} file(s) queued for browser-side text ingestion.`,
+      data: {
+        filenames: files.map((file) => file.name),
+      },
+    });
+
     const documents = await Promise.all(
       files.map(async (file) => {
         const content = await file.text();
@@ -51,6 +64,21 @@ export const useCorpusStore = create<CorpusStore>((set) => ({
       documents: [...documents, ...state.documents],
       selectedIds: state.selectedIds.length ? state.selectedIds : documents.slice(0, 1).map((doc) => doc.id),
     }));
+
+    useProcessStore.getState().addLog({
+      level: 'success',
+      stage: 'corpus.ingest',
+      title: 'Documents added to corpus store',
+      detail: `${documents.length} document(s) loaded in ${Math.round(performance.now() - startedAt)}ms.`,
+      data: {
+        documents: documents.map((document) => ({
+          id: document.id,
+          filename: document.filename,
+          characters: document.content.length,
+          language: document.metadata.language,
+        })),
+      },
+    });
   },
   updateMetadata: (id, meta) =>
     set((state) => ({
@@ -79,5 +107,10 @@ export const useCorpusStore = create<CorpusStore>((set) => ({
         : [...state.selectedIds, id],
     })),
   setSelectedIds: (selectedIds) => set({ selectedIds }),
+  restoreCorpus: (documents, selectedIds = []) =>
+    set({
+      documents,
+      selectedIds: selectedIds.filter((id) => documents.some((document) => document.id === id)),
+      filter: '',
+    }),
 }));
-

@@ -12,6 +12,7 @@ from modules import (
     kwic,
     lexical_stats,
     ner,
+    persistence,
     pos,
     sentiment,
     similarity,
@@ -36,6 +37,8 @@ DISPATCH = {
     "lexical_stats": lexical_stats.run,
     "get_languages": get_languages,
     "get_credits": credits.run,
+    "save_sqlite_project": persistence.save_project,
+    "load_sqlite_project": persistence.load_project,
 }
 
 

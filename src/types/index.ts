@@ -59,3 +59,19 @@ export interface PythonResponse<T> {
   data?: T;
 }
 
+export interface BkiProjectFile {
+  file_type: 'bki.project';
+  schema_version: 1;
+  app_version: string;
+  exported_at: string;
+  documents: CorpusDocument[];
+  selectedIds?: string[];
+  codes: Code[];
+  annotations: Annotation[];
+  analysis: {
+    keywordGroups: KeywordGroup[];
+    frequencyResult?: FrequencyResult;
+    groupBy?: 'month' | 'year' | 'document' | 'category';
+    stellarPath?: string;
+  };
+}
