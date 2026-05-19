@@ -118,6 +118,7 @@ spaCy 公式モデルが存在しない言語は、`ner_backend: "huggingface"` 
 ## クレジット
 
 外部モデル、データセット、辞書を使う場合は `credits` フィールドを明示します。
+BKI は `pip_requires` と `spacy_models` も読み取り、NLP 画面で未導入の Python パッケージや spaCy モデルを表示します。
 
 ```json
 "credits": [

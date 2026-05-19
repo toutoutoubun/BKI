@@ -7,12 +7,26 @@ export interface LanguageCreditWarning {
   note?: string;
 }
 
+export interface LanguageRequirementStatus {
+  type: 'pip' | 'spacy_model' | string;
+  name: string;
+  install_hint?: string;
+}
+
 export interface LanguageInfo {
   code: string;
   name: string;
   built_in: boolean;
   tokenizer?: string;
   tokenizer_source?: string;
+  version?: string;
+  author?: string;
+  addon_path?: string;
+  requirements?: {
+    pip?: string[];
+    spacy_models?: string[];
+  };
+  missing_requirements?: LanguageRequirementStatus[];
   capabilities: string[];
   license_warnings?: LanguageCreditWarning[];
 }

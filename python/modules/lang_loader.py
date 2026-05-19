@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import re
+import importlib.util
 from pathlib import Path
 from typing import Any, Callable
 
@@ -159,6 +160,12 @@ def load_installed_languages() -> dict[str, dict[str, Any]]:
             "lexicon_path": str(addon_dir / "lexicon" / f"{code}.tsv"),
             "fallback": manifest.get("fallback", {}),
             "credits": manifest.get("credits", []),
+            "id": manifest.get("id", addon_dir.name),
+            "version": manifest.get("version"),
+            "author": manifest.get("author"),
+            "bki_min_version": manifest.get("bki_min_version"),
+            "pip_requires": manifest.get("pip_requires", []),
+            "spacy_models": manifest.get("spacy_models", []),
             "built_in": False,
             "addon_path": str(addon_dir),
         }
@@ -179,6 +186,14 @@ def get_languages(payload: dict[str, Any] | None = None) -> dict[str, Any]:
                 "built_in": bool(config.get("built_in")),
                 "tokenizer": config.get("tokenizer", "whitespace"),
                 "tokenizer_source": tokenizer_source(config),
+                "version": config.get("version"),
+                "author": config.get("author"),
+                "addon_path": config.get("addon_path"),
+                "requirements": {
+                    "pip": config.get("pip_requires", []),
+                    "spacy_models": config.get("spacy_models", []),
+                },
+                "missing_requirements": missing_requirements(config),
                 "capabilities": config.get("capabilities") or _capabilities(config),
                 "license_warnings": [
                     credit
@@ -261,6 +276,49 @@ def tokenizer_source(lang_config: dict[str, Any]) -> str:
     if rules_path and Path(str(rules_path)).expanduser().exists():
         return "language_addon_rules"
     return str(lang_config.get("tokenizer", "whitespace"))
+
+
+def _requirement_module_name(requirement: str) -> str:
+    name = re.split(r"[<>=!~;\\[]", requirement, maxsplit=1)[0].strip()
+    aliases = {
+        "python-docx": "docx",
+        "pdfminer.six": "pdfminer",
+        "scikit-learn": "sklearn",
+        "spacy-transformers": "spacy_transformers",
+        "sudachidict-core": "sudachidict_core",
+    }
+    return aliases.get(name, name.replace("-", "_"))
+
+
+def missing_requirements(lang_config: dict[str, Any]) -> list[dict[str, str]]:
+    missing: list[dict[str, str]] = []
+
+    for requirement in lang_config.get("pip_requires") or []:
+        if not isinstance(requirement, str) or not requirement.strip():
+            continue
+        module_name = _requirement_module_name(requirement)
+        if importlib.util.find_spec(module_name) is None:
+            missing.append(
+                {
+                    "type": "pip",
+                    "name": requirement,
+                    "install_hint": f"pip install {requirement}",
+                }
+            )
+
+    for model in lang_config.get("spacy_models") or []:
+        if not isinstance(model, str) or not model.strip():
+            continue
+        if importlib.util.find_spec(model) is None:
+            missing.append(
+                {
+                    "type": "spacy_model",
+                    "name": model,
+                    "install_hint": f"python -m spacy download {model}",
+                }
+            )
+
+    return missing
 
 
 def get_tokenizer(lang_config: dict[str, Any]) -> Callable[[str], list[str]]:

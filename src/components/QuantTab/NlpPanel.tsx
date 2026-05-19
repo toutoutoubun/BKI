@@ -1,5 +1,5 @@
 import { invoke } from '@tauri-apps/api/core';
-import { Brain, Download, Play, RefreshCw } from 'lucide-react';
+import { AlertTriangle, Brain, Download, Play, RefreshCw } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { fallbackLanguages, loadAvailableLanguages, type LanguageCatalog } from '../../lib/languageAddons';
@@ -304,6 +304,7 @@ function NlpPanel({ documents }: Props) {
     () => Boolean(selectedLanguage?.capabilities.includes(command)),
     [command, selectedLanguage],
   );
+  const missingRequirements = selectedLanguage?.missing_requirements ?? [];
 
   const refreshLanguages = async () => {
     setIsLanguageLoading(true);
@@ -319,6 +320,7 @@ function NlpPanel({ documents }: Props) {
         languageCount: catalog.languages.length,
         addonsDir: catalog.addons_dir,
         fallback: Boolean(catalog.fallback),
+        missingRequirementCount: catalog.languages.reduce((sum, item) => sum + (item.missing_requirements?.length ?? 0), 0),
       },
     });
     setIsLanguageLoading(false);
@@ -532,7 +534,13 @@ function NlpPanel({ documents }: Props) {
           <div className="language-capability-panel">
             <div className="toolbar">
               <span className="badge">{selectedLanguage.built_in ? t('nlp.builtInLanguage') : t('nlp.addonLanguage')}</span>
+              {selectedLanguage.version && <span className="badge">{selectedLanguage.version}</span>}
               {languageCatalog.fallback && <span className="badge unknown">{t('nlp.languageFallback')}</span>}
+              {missingRequirements.length > 0 && (
+                <span className="badge unknown" title={missingRequirements.map((item) => item.install_hint ?? item.name).join('\n')}>
+                  {t('nlp.requirementsMissing', { count: missingRequirements.length })}
+                </span>
+              )}
               {(selectedLanguage.license_warnings ?? []).map((warning) => (
                 <span className={warning.license_type === 'nc' ? 'badge nc' : 'badge unknown'} key={`${warning.name}-${warning.license_type}`} title={warning.note}>
                   {t('nlp.licenseWarning')}
@@ -541,6 +549,20 @@ function NlpPanel({ documents }: Props) {
               {selectedLanguage.tokenizer_source && <span className="muted">{t('nlp.tokenizer')}: {selectedLanguage.tokenizer_source}</span>}
               {languageCatalog.addons_dir && <span className="muted">{t('nlp.addonsDir')}: {languageCatalog.addons_dir}</span>}
             </div>
+            {missingRequirements.length > 0 && (
+              <div className="result-row compact warning-row">
+                <strong>
+                  <AlertTriangle size={16} />
+                  {t('nlp.requirementsMissing', { count: missingRequirements.length })}
+                </strong>
+                {missingRequirements.map((item) => (
+                  <span className="muted" key={`${item.type}-${item.name}`}>
+                    {item.type === 'spacy_model' ? t('nlp.requirementSpacy') : t('nlp.requirementPip')}: {item.name}
+                    {item.install_hint ? ` - ${item.install_hint}` : ''}
+                  </span>
+                ))}
+              </div>
+            )}
             <div className="capability-list" aria-label={t('nlp.availableCapabilities')}>
               {commandOptions.map((option) => (
                 <span className={selectedLanguage.capabilities.includes(option.id) ? 'capability-chip active' : 'capability-chip'} key={option.id}>
