@@ -198,6 +198,7 @@
     "clusterCount": "Clusters",
     "cluster": "Cluster",
     "topicTrend": "Topic trend",
+    "exportCsv": "NLP CSV",
     "noResult": "No NLP results",
     "pythonRequired": "Runs through the Python sidecar in Tauri",
     "reloadLanguages": "Reload language add-ons",

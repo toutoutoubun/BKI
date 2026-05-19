@@ -1,5 +1,5 @@
 import { invoke } from '@tauri-apps/api/core';
-import { Brain, Play, RefreshCw } from 'lucide-react';
+import { Brain, Download, Play, RefreshCw } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { fallbackLanguages, loadAvailableLanguages, type LanguageCatalog } from '../../lib/languageAddons';
@@ -26,6 +26,25 @@ const commandOptions: Array<{ id: NlpCommand; labelKey: string }> = [
   { id: 'lexical_stats', labelKey: 'nlp.lexicalStats' },
 ];
 
+type CsvValue = string | number | boolean | null | undefined;
+
+function downloadText(filename: string, content: string, type: string) {
+  const blob = new Blob([content], { type });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
+function toCsv(rows: Array<Record<string, CsvValue>>) {
+  if (!rows.length) return '';
+  const headers = [...new Set(rows.flatMap((row) => Object.keys(row)))];
+  const escape = (value: CsvValue) => `"${String(value ?? '').replaceAll('"', '""')}"`;
+  return [headers.join(','), ...rows.map((row) => headers.map((header) => escape(row[header])).join(','))].join('\n');
+}
+
 function resultCount(command: NlpCommand, result: unknown): number {
   const data = result as Record<string, unknown>;
   if (command === 'ner') return Array.isArray(data.entities) ? data.entities.length : 0;
@@ -35,6 +54,147 @@ function resultCount(command: NlpCommand, result: unknown): number {
   if (command === 'dependency') return Array.isArray(data.triples) ? data.triples.length : 0;
   if (command === 'lexical_stats') return Array.isArray(data.per_document) ? data.per_document.length : 0;
   return 0;
+}
+
+function nlpRows(command: NlpCommand, result: unknown, documents: CorpusDocument[]): Array<Record<string, CsvValue>> {
+  const data = result as Record<string, any>;
+  const documentName = (id: string) => documents.find((document) => document.id === id)?.filename ?? id;
+
+  if (command === 'ner') {
+    const entityRows = (data.entities ?? []).map((entity: any) => ({
+      section: 'entities',
+      document: documentName(entity.document_id),
+      date: entity.date ?? '',
+      text: entity.text,
+      label: entity.label,
+      start: entity.start,
+      end: entity.end,
+      context: entity.context,
+    }));
+    const timelineRows = Object.entries(data.timeline ?? {}).flatMap(([label, periods]) =>
+      Object.entries(periods as Record<string, Record<string, number>>).flatMap(([period, values]) =>
+        Object.entries(values).map(([text, count]) => ({
+          section: 'timeline',
+          label,
+          period,
+          text,
+          count,
+        })),
+      ),
+    );
+    return [...entityRows, ...timelineRows];
+  }
+
+  if (command === 'topic_model') {
+    const topicRows = (data.topics ?? []).flatMap((topic: any) =>
+      (topic.top_words ?? []).map((word: any, rank: number) => ({
+        section: 'topic_words',
+        topic: Number(topic.id) + 1,
+        rank: rank + 1,
+        word: word.word,
+        weight: word.weight,
+      })),
+    );
+    const matrixRows = (data.doc_topic_matrix ?? []).flatMap((row: any) =>
+      (row.topic_weights ?? []).map((weight: number, topicIndex: number) => ({
+        section: 'document_topic_matrix',
+        document: documentName(row.document_id),
+        topic: topicIndex + 1,
+        weight,
+      })),
+    );
+    const trendRows = Object.entries(data.topic_over_time ?? {}).flatMap(([topicId, periods]) =>
+      Object.entries(periods as Record<string, number>).map(([period, weight]) => ({
+        section: 'topic_trend',
+        topic: Number(topicId) + 1,
+        period,
+        weight,
+      })),
+    );
+    return [...topicRows, ...matrixRows, ...trendRows];
+  }
+
+  if (command === 'similarity') {
+    const clusterByDocument = new Map<string, string>();
+    Object.entries(data.clusters ?? {}).forEach(([clusterId, ids]) => {
+      (ids as string[]).forEach((id) => clusterByDocument.set(id, String(Number(clusterId) + 1)));
+    });
+    const rankedRows = (data.ranked ?? []).map((item: any) => ({
+      section: 'ranked',
+      document: documentName(item.document_id),
+      document_id: item.document_id,
+      score: item.score,
+      cluster: clusterByDocument.get(item.document_id) ?? '',
+    }));
+    const clusterRows = Object.entries(data.clusters ?? {}).flatMap(([clusterId, ids]) =>
+      (ids as string[]).map((id) => ({
+        section: 'clusters',
+        cluster: Number(clusterId) + 1,
+        document: documentName(id),
+        document_id: id,
+      })),
+    );
+    const matrixRows = (data.similarity_matrix ?? []).flatMap((row: number[], sourceIndex: number) =>
+      row.map((score, targetIndex) => ({
+        section: 'similarity_matrix',
+        source: documents[sourceIndex]?.filename ?? String(sourceIndex),
+        target: documents[targetIndex]?.filename ?? String(targetIndex),
+        score,
+      })),
+    );
+    return [...rankedRows, ...clusterRows, ...matrixRows];
+  }
+
+  if (command === 'pos') {
+    const distributionRows = Object.entries(data.distribution ?? {}).flatMap(([period, values]) =>
+      Object.entries(values as Record<string, number>).map(([tag, count]) => ({
+        section: 'distribution',
+        period,
+        tag,
+        count,
+      })),
+    );
+    const topWordRows = Object.entries(data.top_words ?? {}).flatMap(([tag, words]) =>
+      (words as Array<{ word: string; count: number }>).map((item, rank) => ({
+        section: 'top_words',
+        tag,
+        rank: rank + 1,
+        word: item.word,
+        count: item.count,
+      })),
+    );
+    return [...distributionRows, ...topWordRows];
+  }
+
+  if (command === 'dependency') {
+    return (data.triples ?? []).map((triple: any) => ({
+      section: 'triples',
+      document: documentName(triple.document_id),
+      date: triple.date ?? '',
+      subject: triple.subject,
+      verb: triple.verb,
+      object: triple.object,
+      sentence: triple.sentence,
+    }));
+  }
+
+  const documentRows = (data.per_document ?? []).map((row: any) => ({
+    section: 'per_document',
+    document: documentName(row.document_id),
+    document_id: row.document_id,
+    date: row.date ?? '',
+    token_count: row.token_count,
+    type_count: row.type_count,
+    ttr: row.ttr,
+    avg_sentence_len: row.avg_sentence_len,
+    avg_word_len: row.avg_word_len,
+  }));
+  const timeRows = Object.entries(data.over_time ?? {}).map(([period, values]) => ({
+    section: 'over_time',
+    period,
+    ...(values as Record<string, number>),
+  }));
+  return [...documentRows, ...timeRows];
 }
 
 function renderPreview(command: NlpCommand, result: unknown, documents: CorpusDocument[], t: (key: string) => string) {
@@ -245,14 +405,37 @@ function NlpPanel({ documents }: Props) {
     setSelectedPosTags((current) => (current.includes(tag) ? current.filter((item) => item !== tag) : [...current, tag]));
   };
 
+  const exportResultCsv = () => {
+    if (result === undefined || result === null) return;
+    const rows = nlpRows(command, result, documents);
+    if (!rows.length) return;
+    downloadText(`bki-nlp-${command}.csv`, toCsv(rows), 'text/csv;charset=utf-8');
+    addLog({
+      level: 'success',
+      stage: `nlp.${command}`,
+      title: 'NLP result exported',
+      detail: `${rows.length} row(s) were exported to CSV.`,
+      data: {
+        command,
+        rowCount: rows.length,
+      },
+    });
+  };
+
   return (
     <section className="panel span-all">
       <div className="panel-header">
         <h2 className="section-title">{t('nlp.title')}</h2>
-        <button className="primary-button" type="button" disabled={isRunning || documents.length === 0 || !isCommandSupported} onClick={() => void run()}>
-          <Play size={17} />
-          {t('common.run')}
-        </button>
+        <div className="toolbar">
+          <button className="ghost-button" type="button" disabled={result === undefined || result === null} onClick={exportResultCsv}>
+            <Download size={17} />
+            {t('nlp.exportCsv')}
+          </button>
+          <button className="primary-button" type="button" disabled={isRunning || documents.length === 0 || !isCommandSupported} onClick={() => void run()}>
+            <Play size={17} />
+            {t('common.run')}
+          </button>
+        </div>
       </div>
       <div className="panel-body">
         <div className="nlp-grid">

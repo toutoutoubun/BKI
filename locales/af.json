@@ -198,6 +198,7 @@
     "clusterCount": "Klusters",
     "cluster": "Kluster",
     "topicTrend": "Onderwerptendens",
+    "exportCsv": "NLP CSV",
     "noResult": "Geen NLP-resultate",
     "pythonRequired": "Loop deur die Python-sidecar in Tauri",
     "reloadLanguages": "Herlaai taal-byvoegings",
