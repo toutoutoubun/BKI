@@ -40,6 +40,9 @@ DISPATCH = {
     "get_credits": credits.run,
     "save_sqlite_project": persistence.save_project,
     "load_sqlite_project": persistence.load_project,
+    "save_analysis_config": persistence.save_analysis_config,
+    "list_analysis_configs": persistence.list_analysis_configs,
+    "delete_analysis_config": persistence.delete_analysis_config,
     "preprocess": preprocess.run,
 }
 

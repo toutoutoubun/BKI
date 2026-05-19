@@ -1,5 +1,5 @@
-import { Download, Play, Plus, Trash2, Upload } from 'lucide-react';
-import { useMemo, useRef, useState } from 'react';
+import { Download, Play, Plus, RefreshCw, Save, Trash2, Upload } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   CartesianGrid,
@@ -11,9 +11,10 @@ import {
   XAxis,
   YAxis,
 } from 'recharts';
+import { deleteAnalysisConfig, listAnalysisConfigs, saveAnalysisConfig, type AnalysisConfigRecord } from '../../lib/analysisConfigs';
 import { useAnalysisStore } from '../../store/analysisStore';
 import { useProcessStore } from '../../store/processStore';
-import type { CorpusDocument } from '../../types';
+import type { CorpusDocument, KeywordGroup } from '../../types';
 import NlpPanel from './NlpPanel';
 import TextMiningPanel from './TextMiningPanel';
 
@@ -21,8 +22,17 @@ interface Props {
   documents: CorpusDocument[];
 }
 
+type FrequencyGroupBy = 'month' | 'year' | 'document' | 'category';
+
+interface FrequencyPresetConfig {
+  keywordGroups: Array<Pick<KeywordGroup, 'name' | 'terms'>>;
+  groupBy: FrequencyGroupBy;
+}
+
 const colors = ['#226f54', '#2f6fed', '#b55b18', '#8a4f9e', '#ba3b46', '#597245'];
 const maxVisibleDispersionHits = 900;
+const frequencyPresetType = 'frequency_preset';
+const groupByOptions: FrequencyGroupBy[] = ['month', 'year', 'document', 'category'];
 
 function downloadBlob(filename: string, blob: Blob) {
   const url = URL.createObjectURL(blob);
@@ -133,6 +143,11 @@ function QuantTab({ documents }: Props) {
   const { t } = useTranslation();
   const keywordInputRef = useRef<HTMLInputElement>(null);
   const [keywordImportMessage, setKeywordImportMessage] = useState('');
+  const [presetName, setPresetName] = useState('');
+  const [selectedPresetId, setSelectedPresetId] = useState('');
+  const [presets, setPresets] = useState<Array<AnalysisConfigRecord<FrequencyPresetConfig>>>([]);
+  const [presetMessage, setPresetMessage] = useState('');
+  const [isPresetBusy, setIsPresetBusy] = useState(false);
   const keywordGroups = useAnalysisStore((state) => state.keywordGroups);
   const frequencyResult = useAnalysisStore((state) => state.frequencyResult);
   const groupBy = useAnalysisStore((state) => state.groupBy);
@@ -145,6 +160,7 @@ function QuantTab({ documents }: Props) {
   const removeKeywordGroup = useAnalysisStore((state) => state.removeKeywordGroup);
   const runFrequency = useAnalysisStore((state) => state.runFrequency);
   const addLog = useProcessStore((state) => state.addLog);
+  const selectedPreset = presets.find((preset) => preset.id === selectedPresetId);
 
   const chartData = useMemo(() => {
     if (!frequencyResult) return [];
@@ -193,6 +209,88 @@ function QuantTab({ documents }: Props) {
     () => dispersionRows.reduce((sum, row) => sum + row.hits.length, 0),
     [dispersionRows],
   );
+
+  const refreshPresets = async () => {
+    setIsPresetBusy(true);
+    const records = await listAnalysisConfigs<FrequencyPresetConfig>(frequencyPresetType);
+    setPresets(records);
+    setSelectedPresetId((current) => (records.some((preset) => preset.id === current) ? current : (records[0]?.id ?? '')));
+    setIsPresetBusy(false);
+  };
+
+  useEffect(() => {
+    void refreshPresets();
+  }, []);
+
+  const savePreset = async () => {
+    const name = presetName.trim() || selectedPreset?.name || t('quant.defaultPresetName');
+    const config: FrequencyPresetConfig = {
+      keywordGroups: keywordGroups.map((group) => ({
+        name: group.name,
+        terms: group.terms,
+      })),
+      groupBy,
+    };
+    setIsPresetBusy(true);
+    const record = await saveAnalysisConfig(frequencyPresetType, name, config, selectedPresetId || undefined);
+    const updated = await listAnalysisConfigs<FrequencyPresetConfig>(frequencyPresetType);
+    setPresets(updated);
+    setSelectedPresetId(record.id);
+    setPresetName(record.name);
+    setPresetMessage(t('quant.presetSaveSuccess', { name: record.name }));
+    addLog({
+      level: 'success',
+      stage: 'analysis.presets',
+      title: 'Frequency preset saved',
+      detail: record.name,
+      data: {
+        presetId: record.id,
+        groupBy,
+        keywordGroupCount: config.keywordGroups.length,
+      },
+    });
+    setIsPresetBusy(false);
+  };
+
+  const applyPreset = () => {
+    if (!selectedPreset) return;
+    const config = selectedPreset.config;
+    if (!config?.keywordGroups?.length) return;
+    replaceKeywordGroups(config.keywordGroups);
+    setGroupBy(groupByOptions.includes(config.groupBy) ? config.groupBy : 'month');
+    setPresetName(selectedPreset.name);
+    setPresetMessage(t('quant.presetLoadSuccess', { name: selectedPreset.name }));
+    addLog({
+      level: 'success',
+      stage: 'analysis.presets',
+      title: 'Frequency preset applied',
+      detail: selectedPreset.name,
+      data: {
+        presetId: selectedPreset.id,
+        groupBy: config.groupBy,
+        keywordGroupCount: config.keywordGroups.length,
+      },
+    });
+  };
+
+  const deletePreset = async () => {
+    if (!selectedPreset) return;
+    setIsPresetBusy(true);
+    await deleteAnalysisConfig(selectedPreset.id);
+    const updated = await listAnalysisConfigs<FrequencyPresetConfig>(frequencyPresetType);
+    setPresets(updated);
+    setSelectedPresetId(updated[0]?.id ?? '');
+    setPresetName('');
+    setPresetMessage(t('quant.presetDeleteSuccess', { name: selectedPreset.name }));
+    addLog({
+      level: 'success',
+      stage: 'analysis.presets',
+      title: 'Frequency preset deleted',
+      detail: selectedPreset.name,
+      data: { presetId: selectedPreset.id },
+    });
+    setIsPresetBusy(false);
+  };
 
   const exportDispersionCsv = () => {
     const rows = dispersionRows.flatMap((row) =>
@@ -302,6 +400,45 @@ function QuantTab({ documents }: Props) {
             }}
           />
           {keywordImportMessage && <span className="muted">{keywordImportMessage}</span>}
+          <div className="result-row">
+            <strong>{t('quant.presets')}</strong>
+            <div className="field-grid">
+              <label className="field">
+                <span>{t('quant.presetName')}</span>
+                <input className="text-input" value={presetName} placeholder={selectedPreset?.name ?? t('quant.defaultPresetName')} onChange={(event) => setPresetName(event.target.value)} />
+              </label>
+              <label className="field">
+                <span>{t('quant.savedPresets')}</span>
+                <select className="select-input" value={selectedPresetId} onChange={(event) => setSelectedPresetId(event.target.value)}>
+                  <option value="">{t('common.none')}</option>
+                  {presets.map((preset) => (
+                    <option key={preset.id} value={preset.id}>
+                      {preset.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+            <div className="toolbar">
+              <button className="ghost-button" type="button" disabled={isPresetBusy} onClick={() => void refreshPresets()}>
+                <RefreshCw size={17} />
+                {t('quant.refreshPresets')}
+              </button>
+              <button className="ghost-button" type="button" disabled={!selectedPreset || isPresetBusy} onClick={applyPreset}>
+                <Upload size={17} />
+                {t('quant.loadPreset')}
+              </button>
+              <button className="ghost-button" type="button" disabled={!selectedPreset || isPresetBusy} onClick={() => void deletePreset()}>
+                <Trash2 size={17} />
+                {t('quant.deletePreset')}
+              </button>
+              <button className="primary-button" type="button" disabled={isPresetBusy || keywordGroups.length === 0} onClick={() => void savePreset()}>
+                <Save size={17} />
+                {t('quant.savePreset')}
+              </button>
+            </div>
+            {presetMessage && <span className="muted">{presetMessage}</span>}
+          </div>
           <label className="field">
             <span>{t('quant.groupBy')}</span>
             <select className="select-input" value={groupBy} onChange={(event) => setGroupBy(event.target.value as typeof groupBy)}>

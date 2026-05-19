@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import sqlite3
+import uuid
 from pathlib import Path
 from typing import Any
 
@@ -84,7 +85,6 @@ def _clear(conn: sqlite3.Connection) -> None:
         "codes",
         "document_tags",
         "documents",
-        "analysis_configs",
     ]:
         conn.execute(f"DELETE FROM {table}")
 
@@ -174,6 +174,10 @@ def save_project(payload: dict[str, Any]) -> dict[str, Any]:
                 """
                 INSERT INTO analysis_configs (id, type, name, config_json)
                 VALUES (?, ?, ?, ?)
+                ON CONFLICT(id) DO UPDATE SET
+                  type = excluded.type,
+                  name = excluded.name,
+                  config_json = excluded.config_json
                 """,
                 (config_id, config_id, config_id, json.dumps(config, ensure_ascii=False)),
             )
@@ -277,3 +281,78 @@ def load_project(payload: dict[str, Any] | None = None) -> dict[str, Any]:
         }
 
     return {"ok": True, "path": str(DB_PATH), "project": project}
+
+
+def save_analysis_config(payload: dict[str, Any]) -> dict[str, Any]:
+    config_type = str(payload.get("type") or "frequency_preset")
+    name = str(payload.get("name") or "").strip() or "Untitled preset"
+    config = payload.get("config") if isinstance(payload.get("config"), dict) else {}
+    config_id = str(payload.get("id") or f"{config_type}:{uuid.uuid4()}")
+
+    with _connect() as conn:
+        conn.execute(
+            """
+            INSERT INTO analysis_configs (id, type, name, config_json)
+            VALUES (?, ?, ?, ?)
+            ON CONFLICT(id) DO UPDATE SET
+              type = excluded.type,
+              name = excluded.name,
+              config_json = excluded.config_json
+            """,
+            (config_id, config_type, name, json.dumps(config, ensure_ascii=False)),
+        )
+
+    return {
+        "ok": True,
+        "path": str(DB_PATH),
+        "config": {
+            "id": config_id,
+            "type": config_type,
+            "name": name,
+            "config": config,
+        },
+    }
+
+
+def list_analysis_configs(payload: dict[str, Any] | None = None) -> dict[str, Any]:
+    payload = payload or {}
+    config_type = payload.get("type")
+    query = "SELECT id, type, name, config_json, created_at FROM analysis_configs"
+    params: tuple[Any, ...] = ()
+    if config_type:
+        query += " WHERE type = ?"
+        params = (config_type,)
+    query += " ORDER BY created_at DESC, name"
+
+    if not DB_PATH.exists():
+        return {"ok": True, "path": str(DB_PATH), "configs": []}
+
+    configs = []
+    with _connect() as conn:
+        for row in conn.execute(query, params).fetchall():
+            try:
+                config = json.loads(row["config_json"] or "{}")
+            except json.JSONDecodeError:
+                config = {}
+            configs.append(
+                {
+                    "id": row["id"],
+                    "type": row["type"],
+                    "name": row["name"],
+                    "config": config,
+                    "created_at": row["created_at"],
+                }
+            )
+
+    return {"ok": True, "path": str(DB_PATH), "configs": configs}
+
+
+def delete_analysis_config(payload: dict[str, Any]) -> dict[str, Any]:
+    config_id = str(payload.get("id") or "")
+    if not config_id:
+        return {"ok": False, "error": "missing analysis config id"}
+
+    with _connect() as conn:
+        cursor = conn.execute("DELETE FROM analysis_configs WHERE id = ?", (config_id,))
+
+    return {"ok": True, "path": str(DB_PATH), "deleted": cursor.rowcount}
