@@ -238,6 +238,8 @@
     "unsupportedCapability": "{{analysis}} n'est pas disponible pour {{language}}",
     "resultCount": "Nombre de résultats",
     "topic": "Sujet",
+    "topicLabel": "Libellé du sujet",
+    "topicLabelPlaceholder": "Saisir un libellé",
     "score": "Score"
   },
   "about": {

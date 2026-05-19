@@ -238,6 +238,8 @@
     "unsupportedCapability": "{{language}} では {{analysis}} を利用できません",
     "resultCount": "結果数",
     "topic": "トピック",
+    "topicLabel": "トピックラベル",
+    "topicLabelPlaceholder": "ラベルを入力",
     "score": "スコア"
   },
   "about": {

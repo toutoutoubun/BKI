@@ -14,6 +14,22 @@ interface Props {
   documents: CorpusDocument[];
 }
 
+interface TopicWord {
+  word: string;
+  weight?: number;
+}
+
+interface TopicModelTopic {
+  id: number;
+  label?: string;
+  top_words?: TopicWord[];
+}
+
+interface TopicModelResult {
+  topics?: TopicModelTopic[];
+  topic_over_time?: Record<string, Record<string, number>>;
+}
+
 const entityTypes = ['PERSON', 'ORG', 'GPE', 'DATE'];
 const posTags = ['NOUN', 'VERB', 'ADJ', 'ADV'];
 
@@ -56,6 +72,10 @@ function resultCount(command: NlpCommand, result: unknown): number {
   return 0;
 }
 
+function isTopicModelResult(result: unknown): result is TopicModelResult {
+  return Boolean(result && typeof result === 'object' && Array.isArray((result as TopicModelResult).topics));
+}
+
 function nlpRows(command: NlpCommand, result: unknown, documents: CorpusDocument[]): Array<Record<string, CsvValue>> {
   const data = result as Record<string, any>;
   const documentName = (id: string) => documents.find((document) => document.id === id)?.filename ?? id;
@@ -86,10 +106,15 @@ function nlpRows(command: NlpCommand, result: unknown, documents: CorpusDocument
   }
 
   if (command === 'topic_model') {
-    const topicRows = (data.topics ?? []).flatMap((topic: any) =>
+    const topics = (data.topics ?? []) as Array<TopicModelTopic & Record<string, any>>;
+    const labelByTopicIndex = new Map<number, string>();
+    topics.forEach((topic) => labelByTopicIndex.set(Number(topic.id), String(topic.label ?? '')));
+
+    const topicRows = topics.flatMap((topic) =>
       (topic.top_words ?? []).map((word: any, rank: number) => ({
         section: 'topic_words',
         topic: Number(topic.id) + 1,
+        topic_label: labelByTopicIndex.get(Number(topic.id)) ?? '',
         rank: rank + 1,
         word: word.word,
         weight: word.weight,
@@ -100,6 +125,7 @@ function nlpRows(command: NlpCommand, result: unknown, documents: CorpusDocument
         section: 'document_topic_matrix',
         document: documentName(row.document_id),
         topic: topicIndex + 1,
+        topic_label: labelByTopicIndex.get(topicIndex) ?? '',
         weight,
       })),
     );
@@ -107,6 +133,7 @@ function nlpRows(command: NlpCommand, result: unknown, documents: CorpusDocument
       Object.entries(periods as Record<string, number>).map(([period, weight]) => ({
         section: 'topic_trend',
         topic: Number(topicId) + 1,
+        topic_label: labelByTopicIndex.get(Number(topicId)) ?? '',
         period,
         weight,
       })),
@@ -197,7 +224,13 @@ function nlpRows(command: NlpCommand, result: unknown, documents: CorpusDocument
   return [...documentRows, ...timeRows];
 }
 
-function renderPreview(command: NlpCommand, result: unknown, documents: CorpusDocument[], t: (key: string) => string) {
+function renderPreview(
+  command: NlpCommand,
+  result: unknown,
+  documents: CorpusDocument[],
+  t: (key: string) => string,
+  onTopicLabelChange?: (topicId: number, label: string) => void,
+) {
   const data = result as Record<string, any>;
   const documentName = (id: string) => documents.find((document) => document.id === id)?.filename ?? id;
   if (command === 'ner') {
@@ -209,17 +242,36 @@ function renderPreview(command: NlpCommand, result: unknown, documents: CorpusDo
     ));
   }
   if (command === 'topic_model') {
+    const topics = ((data.topics ?? []) as TopicModelTopic[]).slice(0, 6);
+    const labelForTopic = (topicId: string) => {
+      const index = Number(topicId);
+      const label = String(topics.find((topic) => Number(topic.id) === index)?.label ?? '').trim();
+      return label ? `${t('nlp.topicTrend')} ${index + 1}: ${label}` : `${t('nlp.topicTrend')} ${index + 1}`;
+    };
+
     return (
       <>
-        {(data.topics ?? []).slice(0, 6).map((topic: any) => (
-          <div className="result-row compact" key={topic.id}>
-            <strong>{t('nlp.topic')} {topic.id + 1}</strong>
+        {topics.map((topic) => (
+          <div className="result-row compact topic-result-row" key={topic.id}>
+            <div className="topic-result-header">
+              <strong>{t('nlp.topic')} {Number(topic.id) + 1}</strong>
+              <label className="topic-label-field">
+                <span>{t('nlp.topicLabel')}</span>
+                <input
+                  className="text-input"
+                  type="text"
+                  value={topic.label ?? ''}
+                  placeholder={t('nlp.topicLabelPlaceholder')}
+                  onChange={(event) => onTopicLabelChange?.(Number(topic.id), event.target.value)}
+                />
+              </label>
+            </div>
             <span className="muted">{(topic.top_words ?? []).map((word: any) => word.word).join(', ')}</span>
           </div>
         ))}
         {Object.entries(data.topic_over_time ?? {}).slice(0, 6).map(([topicId, periods]) => (
           <div className="result-row compact" key={`topic-trend-${topicId}`}>
-            <strong>{t('nlp.topicTrend')} {Number(topicId) + 1}</strong>
+            <strong>{labelForTopic(topicId)}</strong>
             <span className="muted">
               {Object.entries(periods as Record<string, number>)
                 .slice(0, 8)
@@ -406,6 +458,16 @@ function NlpPanel({ documents }: Props) {
 
   const togglePos = (tag: string) => {
     setSelectedPosTags((current) => (current.includes(tag) ? current.filter((item) => item !== tag) : [...current, tag]));
+  };
+
+  const updateTopicLabel = (topicId: number, label: string) => {
+    setResult((current: unknown) => {
+      if (!isTopicModelResult(current)) return current;
+      return {
+        ...current,
+        topics: current.topics?.map((topic) => (Number(topic.id) === topicId ? { ...topic, label } : topic)),
+      };
+    });
   };
 
   const exportResultCsv = () => {
@@ -616,7 +678,7 @@ function NlpPanel({ documents }: Props) {
                 <span className="muted">{(result as Record<string, unknown>).tokenizer_source as string}</span>
               </div>
             )}
-            {renderPreview(command, result, documents, t)}
+            {renderPreview(command, result, documents, t, updateTopicLabel)}
           </div>
         )}
       </div>

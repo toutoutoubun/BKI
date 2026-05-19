@@ -238,6 +238,8 @@
     "unsupportedCapability": "{{analysis}} is not available for {{language}}",
     "resultCount": "Result count",
     "topic": "Topic",
+    "topicLabel": "Topic label",
+    "topicLabelPlaceholder": "Enter label",
     "score": "Score"
   },
   "about": {

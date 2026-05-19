@@ -238,6 +238,8 @@
     "unsupportedCapability": "{{analysis}} is nie beskikbaar vir {{language}} nie",
     "resultCount": "Resultaattelling",
     "topic": "Onderwerp",
+    "topicLabel": "Onderwerpetiket",
+    "topicLabelPlaceholder": "Voer etiket in",
     "score": "Telling"
   },
   "about": {

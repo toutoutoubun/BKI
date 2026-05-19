@@ -808,6 +808,28 @@ button {
   gap: 10px;
 }
 
+.topic-result-row {
+  gap: 8px;
+}
+
+.topic-result-header {
+  display: grid;
+  grid-template-columns: minmax(90px, auto) minmax(180px, 1fr);
+  gap: 12px;
+  align-items: end;
+}
+
+.topic-label-field {
+  display: grid;
+  gap: 5px;
+}
+
+.topic-label-field span {
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 600;
+}
+
 .language-capability-panel {
   display: grid;
   gap: 8px;
@@ -1028,6 +1050,7 @@ button {
   .code-row,
   .keyword-row,
   .nlp-grid,
+  .topic-result-header,
   .guide-sections,
   .annotation-grid,
   .preview-grid,
