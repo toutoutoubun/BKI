@@ -91,6 +91,8 @@
     "applyCodes": "適用するコード",
     "selectedText": "選択中のテキスト",
     "codeAnalysis": "コード分析",
+    "exportCodebookCsv": "コードブックCSV",
+    "exportAnnotationsCsv": "注釈CSV",
     "annotationCount": "注釈数",
     "documentCount": "文書数",
     "characterCount": "文字数",

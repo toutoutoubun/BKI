@@ -91,6 +91,8 @@
     "applyCodes": "Codes à appliquer",
     "selectedText": "Texte sélectionné",
     "codeAnalysis": "Analyse des codes",
+    "exportCodebookCsv": "CSV du codebook",
+    "exportAnnotationsCsv": "CSV des annotations",
     "annotationCount": "Annotations",
     "documentCount": "Documents",
     "characterCount": "Caractères",

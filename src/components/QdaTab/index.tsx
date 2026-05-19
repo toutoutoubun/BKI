@@ -1,7 +1,8 @@
-import { Edit3, Plus, Trash2 } from 'lucide-react';
+import { Download, Edit3, Plus, Trash2 } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useCodingStore } from '../../store/codingStore';
+import { useProcessStore } from '../../store/processStore';
 import type { Annotation, Code, CorpusDocument } from '../../types';
 
 interface Props {
@@ -24,6 +25,27 @@ function clampRange(start: number, end: number, contentLength: number) {
   return { safeStart, safeEnd };
 }
 
+function downloadText(filename: string, content: string, type: string) {
+  const blob = new Blob([content], { type });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
+function toCsv(rows: Array<Record<string, string | number>>) {
+  if (!rows.length) return '';
+  const headers = Object.keys(rows[0]);
+  const escape = (value: string | number) => `"${String(value).replaceAll('"', '""')}"`;
+  return [headers.join(','), ...rows.map((row) => headers.map((header) => escape(row[header] ?? '')).join(','))].join('\n');
+}
+
+function truncate(value: string, limit = 220) {
+  return value.length > limit ? `${value.slice(0, limit - 3)}...` : value;
+}
+
 function QdaTab({ documents }: Props) {
   const { t } = useTranslation();
   const textRef = useRef<HTMLTextAreaElement>(null);
@@ -35,6 +57,7 @@ function QdaTab({ documents }: Props) {
   const addAnnotation = useCodingStore((state) => state.addAnnotation);
   const updateAnnotation = useCodingStore((state) => state.updateAnnotation);
   const removeAnnotation = useCodingStore((state) => state.removeAnnotation);
+  const addLog = useProcessStore((state) => state.addLog);
 
   const [label, setLabel] = useState('');
   const [description, setDescription] = useState('');
@@ -158,6 +181,65 @@ function QdaTab({ documents }: Props) {
       if (!codeId) return true;
       return code.id !== codeId && !descendantIds.get(codeId)?.has(code.id);
     });
+
+  const codebookRows = () =>
+    codes.map((code) => {
+      const codeAnnotations = annotations.filter((annotation) => annotation.codeIds.includes(code.id));
+      return {
+        id: code.id,
+        label: code.label,
+        description: code.description ?? '',
+        parent: codes.find((candidate) => candidate.id === code.parentId)?.label ?? '',
+        color: code.color,
+        depth: codeDepth(code.id),
+        annotations: codeAnnotations.length,
+        documents: new Set(codeAnnotations.map((annotation) => annotation.documentId)).size,
+      };
+    });
+
+  const annotationRows = () =>
+    annotations
+      .filter((annotation) => documents.some((document) => document.id === annotation.documentId))
+      .map((annotation) => {
+        const document = documents.find((candidate) => candidate.id === annotation.documentId);
+        return {
+          id: annotation.id,
+          document: document?.filename ?? annotation.documentId,
+          start: annotation.start,
+          end: annotation.end,
+          codes: annotation.codeIds
+            .map((codeId) => codes.find((code) => code.id === codeId)?.label ?? codeId)
+            .join(', '),
+          memo: annotation.memo ?? '',
+          excerpt: document ? truncate(document.content.slice(annotation.start, annotation.end)) : '',
+        };
+      });
+
+  const exportCodebookCsv = () => {
+    const rows = codebookRows();
+    if (!rows.length) return;
+    downloadText('bki-codebook.csv', toCsv(rows), 'text/csv;charset=utf-8');
+    addLog({
+      level: 'success',
+      stage: 'qda.export',
+      title: 'Codebook CSV exported',
+      detail: `${rows.length} code row(s) were exported.`,
+      data: { rowCount: rows.length },
+    });
+  };
+
+  const exportAnnotationsCsv = () => {
+    const rows = annotationRows();
+    if (!rows.length) return;
+    downloadText('bki-annotations.csv', toCsv(rows), 'text/csv;charset=utf-8');
+    addLog({
+      level: 'success',
+      stage: 'qda.export',
+      title: 'Annotation CSV exported',
+      detail: `${rows.length} annotation row(s) were exported.`,
+      data: { rowCount: rows.length, documentCount: documents.length },
+    });
+  };
 
   const submitCode = () => {
     if (!label.trim()) return;
@@ -563,6 +645,16 @@ function QdaTab({ documents }: Props) {
       <section className="panel span-all">
         <div className="panel-header">
           <h2 className="section-title">{t('qda.codeAnalysis')}</h2>
+          <div className="toolbar">
+            <button className="ghost-button" type="button" disabled={!codes.length} onClick={exportCodebookCsv}>
+              <Download size={16} />
+              {t('qda.exportCodebookCsv')}
+            </button>
+            <button className="ghost-button" type="button" disabled={!annotationRows().length} onClick={exportAnnotationsCsv}>
+              <Download size={16} />
+              {t('qda.exportAnnotationsCsv')}
+            </button>
+          </div>
         </div>
         <div className="panel-body">
           <div className="table-wrap">

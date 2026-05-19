@@ -91,6 +91,8 @@
     "applyCodes": "Kodes om toe te pas",
     "selectedText": "Gekose teks",
     "codeAnalysis": "Kode-analise",
+    "exportCodebookCsv": "Kodeboek CSV",
+    "exportAnnotationsCsv": "Annotasies CSV",
     "annotationCount": "Annotasies",
     "documentCount": "Dokumente",
     "characterCount": "Karakters",
