@@ -1,10 +1,9 @@
 import { Edit3, FileText, Search, Trash2, Upload } from 'lucide-react';
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { fallbackLanguages, loadAvailableLanguages, type LanguageInfo } from '../../lib/languageAddons';
 import { useCorpusStore } from '../../store/corpusStore';
 import type { CorpusDocument, SupportedLanguage } from '../../types';
-
-const languages: SupportedLanguage[] = ['ja', 'en', 'fr', 'af'];
 
 type Draft = {
   date: string;
@@ -29,6 +28,7 @@ function CorpusPanel() {
   const inputRef = useRef<HTMLInputElement>(null);
   const [editing, setEditing] = useState<CorpusDocument | null>(null);
   const [draft, setDraft] = useState<Draft | null>(null);
+  const [availableLanguages, setAvailableLanguages] = useState<LanguageInfo[]>(fallbackLanguages);
 
   const documents = useCorpusStore((state) => state.documents);
   const selectedIds = useCorpusStore((state) => state.selectedIds);
@@ -51,6 +51,28 @@ function CorpusPanel() {
   }, [documents, filter]);
 
   const selectedDocument = documents.find((doc) => selectedIds.includes(doc.id));
+  const metadataLanguages = useMemo(() => {
+    if (!draft?.language || availableLanguages.some((language) => language.code === draft.language)) return availableLanguages;
+    return [
+      {
+        code: draft.language,
+        name: draft.language.toUpperCase(),
+        built_in: false,
+        capabilities: [],
+      },
+      ...availableLanguages,
+    ];
+  }, [availableLanguages, draft?.language]);
+
+  useEffect(() => {
+    let isMounted = true;
+    loadAvailableLanguages().then((catalog) => {
+      if (isMounted) setAvailableLanguages(catalog.languages);
+    });
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   const handleFiles = async (fileList: FileList | File[]) => {
     const files = Array.from(fileList);
@@ -186,9 +208,9 @@ function CorpusPanel() {
                 <label className="field">
                   <span>{t('corpus.language')}</span>
                   <select className="select-input" value={draft.language} onChange={(event) => setDraft({ ...draft, language: event.target.value as SupportedLanguage })}>
-                    {languages.map((language) => (
-                      <option key={language} value={language}>
-                        {language.toUpperCase()}
+                    {metadataLanguages.map((language) => (
+                      <option key={language.code} value={language.code}>
+                        {language.name}
                       </option>
                     ))}
                   </select>

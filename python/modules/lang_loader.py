@@ -14,7 +14,19 @@ BUILTIN_LANGUAGES: dict[str, dict[str, Any]] = {
         "ner_model": "en_core_web_sm",
         "pos_model": "en_core_web_sm",
         "built_in": True,
-        "capabilities": ["frequency", "kwic", "sentiment", "cooccurrence", "tfidf", "topic_model", "ner", "pos", "dependency"],
+        "capabilities": [
+            "frequency",
+            "kwic",
+            "sentiment",
+            "cooccurrence",
+            "tfidf",
+            "topic_model",
+            "similarity",
+            "lexical_stats",
+            "ner",
+            "pos",
+            "dependency",
+        ],
         "credits": [
             {"name": "spaCy en_core_web_sm", "authors": "Explosion AI", "url": "https://spacy.io", "license": "MIT", "license_type": "open"}
         ],
@@ -26,7 +38,7 @@ BUILTIN_LANGUAGES: dict[str, dict[str, Any]] = {
         "ner_model": "ja_ginza",
         "pos_model": "ja_ginza",
         "built_in": True,
-        "capabilities": ["frequency", "kwic", "sentiment", "cooccurrence", "tfidf", "topic_model", "ner", "pos"],
+        "capabilities": ["frequency", "kwic", "sentiment", "cooccurrence", "tfidf", "topic_model", "similarity", "lexical_stats", "ner", "pos"],
         "credits": [
             {"name": "GiNZA", "authors": "Megagon Labs", "url": "https://megagonlabs.github.io/ginza/", "license": "Apache 2.0", "license_type": "open"},
             {"name": "SudachiDict", "authors": "Works Applications", "url": "https://github.com/WorksApplications/SudachiDict", "license": "Apache 2.0", "license_type": "open"},
@@ -39,7 +51,19 @@ BUILTIN_LANGUAGES: dict[str, dict[str, Any]] = {
         "ner_model": "fr_core_news_sm",
         "pos_model": "fr_core_news_sm",
         "built_in": True,
-        "capabilities": ["frequency", "kwic", "sentiment", "cooccurrence", "tfidf", "topic_model", "ner", "pos", "dependency"],
+        "capabilities": [
+            "frequency",
+            "kwic",
+            "sentiment",
+            "cooccurrence",
+            "tfidf",
+            "topic_model",
+            "similarity",
+            "lexical_stats",
+            "ner",
+            "pos",
+            "dependency",
+        ],
         "credits": [
             {"name": "spaCy fr_core_news_sm", "authors": "Explosion AI", "url": "https://spacy.io", "license": "MIT", "license_type": "open"}
         ],
@@ -51,7 +75,7 @@ BUILTIN_LANGUAGES: dict[str, dict[str, Any]] = {
         "ner_model": "xx_ent_wiki_sm",
         "pos_model": "xx_ent_wiki_sm",
         "built_in": True,
-        "capabilities": ["frequency", "kwic", "sentiment", "cooccurrence", "tfidf", "topic_model", "ner", "pos"],
+        "capabilities": ["frequency", "kwic", "sentiment", "cooccurrence", "tfidf", "topic_model", "similarity", "lexical_stats", "ner", "pos"],
         "credits": [
             {"name": "spaCy xx_ent_wiki_sm", "authors": "Explosion AI", "url": "https://spacy.io", "license": "MIT", "license_type": "open"}
         ],
@@ -61,7 +85,7 @@ BUILTIN_LANGUAGES: dict[str, dict[str, Any]] = {
 
 def _capabilities(config: dict[str, Any]) -> list[str]:
     fallback = config.get("fallback") or {}
-    capabilities = ["frequency", "kwic", "sentiment", "cooccurrence", "tfidf", "topic_model"]
+    capabilities = ["frequency", "kwic", "sentiment", "cooccurrence", "tfidf", "topic_model", "similarity", "lexical_stats"]
     if config.get("ner_model") or fallback.get("ner"):
         capabilities.append("ner")
     if config.get("pos_model") or fallback.get("pos"):
@@ -172,4 +196,3 @@ def get_ner_pipeline(lang_config: dict[str, Any]):
     except Exception:  # noqa: BLE001
         return None
     return None
-

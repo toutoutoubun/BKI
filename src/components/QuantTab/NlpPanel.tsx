@@ -1,7 +1,8 @@
 import { invoke } from '@tauri-apps/api/core';
-import { Brain, Play } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import { Brain, Play, RefreshCw } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { fallbackLanguages, loadAvailableLanguages, type LanguageCatalog } from '../../lib/languageAddons';
 import { useProcessStore } from '../../store/processStore';
 import type { CorpusDocument } from '../../types';
 
@@ -13,6 +14,15 @@ interface Props {
 
 const entityTypes = ['PERSON', 'ORG', 'GPE', 'DATE'];
 const posTags = ['NOUN', 'VERB', 'ADJ', 'ADV'];
+
+const commandOptions: Array<{ id: NlpCommand; labelKey: string }> = [
+  { id: 'ner', labelKey: 'nlp.ner' },
+  { id: 'topic_model', labelKey: 'nlp.topicModel' },
+  { id: 'similarity', labelKey: 'nlp.similarity' },
+  { id: 'pos', labelKey: 'nlp.pos' },
+  { id: 'dependency', labelKey: 'nlp.dependency' },
+  { id: 'lexical_stats', labelKey: 'nlp.lexicalStats' },
+];
 
 function resultCount(command: NlpCommand, result: unknown): number {
   const data = result as Record<string, unknown>;
@@ -87,11 +97,44 @@ function NlpPanel({ documents }: Props) {
   const [topicCount, setTopicCount] = useState(5);
   const [targetEntity, setTargetEntity] = useState('');
   const [queryDocumentId, setQueryDocumentId] = useState('');
+  const [languageCatalog, setLanguageCatalog] = useState<LanguageCatalog>({ languages: fallbackLanguages });
+  const [isLanguageLoading, setIsLanguageLoading] = useState(false);
   const [result, setResult] = useState<unknown>();
   const [error, setError] = useState<string>();
   const [isRunning, setIsRunning] = useState(false);
 
   const activeDocumentId = useMemo(() => queryDocumentId || documents[0]?.id || '', [documents, queryDocumentId]);
+  const selectedLanguage = useMemo(
+    () => languageCatalog.languages.find((item) => item.code === language) ?? languageCatalog.languages[0],
+    [language, languageCatalog.languages],
+  );
+  const isCommandSupported = useMemo(
+    () => Boolean(selectedLanguage?.capabilities.includes(command)),
+    [command, selectedLanguage],
+  );
+
+  const refreshLanguages = async () => {
+    setIsLanguageLoading(true);
+    const catalog = await loadAvailableLanguages();
+    setLanguageCatalog(catalog);
+    setLanguage((current) => (catalog.languages.some((item) => item.code === current) ? current : (catalog.languages[0]?.code ?? 'en')));
+    addLog({
+      level: catalog.fallback ? 'warning' : 'success',
+      stage: 'nlp.languages',
+      title: catalog.fallback ? 'Language add-on discovery fallback used' : 'Language add-ons discovered',
+      detail: catalog.fallback ? (catalog.error ?? 'Using built-in language metadata.') : (catalog.addons_dir ?? ''),
+      data: {
+        languageCount: catalog.languages.length,
+        addonsDir: catalog.addons_dir,
+        fallback: Boolean(catalog.fallback),
+      },
+    });
+    setIsLanguageLoading(false);
+  };
+
+  useEffect(() => {
+    void refreshLanguages();
+  }, []);
 
   const payload = () => {
     const base = { documents, language };
@@ -104,6 +147,7 @@ function NlpPanel({ documents }: Props) {
   };
 
   const run = async () => {
+    if (!isCommandSupported) return;
     const requestPayload = payload();
     const startedAt = performance.now();
     setIsRunning(true);
@@ -117,6 +161,7 @@ function NlpPanel({ documents }: Props) {
         command,
         documentCount: documents.length,
         language,
+        languageName: selectedLanguage?.name,
         options:
           command === 'ner'
             ? { entityTypes: selectedEntities }
@@ -172,7 +217,7 @@ function NlpPanel({ documents }: Props) {
     <section className="panel span-all">
       <div className="panel-header">
         <h2 className="section-title">{t('nlp.title')}</h2>
-        <button className="primary-button" type="button" disabled={isRunning || documents.length === 0} onClick={() => void run()}>
+        <button className="primary-button" type="button" disabled={isRunning || documents.length === 0 || !isCommandSupported} onClick={() => void run()}>
           <Play size={17} />
           {t('common.run')}
         </button>
@@ -182,22 +227,27 @@ function NlpPanel({ documents }: Props) {
           <label className="field">
             <span>{t('nlp.analysis')}</span>
             <select className="select-input" value={command} onChange={(event) => setCommand(event.target.value as NlpCommand)}>
-              <option value="ner">{t('nlp.ner')}</option>
-              <option value="topic_model">{t('nlp.topicModel')}</option>
-              <option value="similarity">{t('nlp.similarity')}</option>
-              <option value="pos">{t('nlp.pos')}</option>
-              <option value="dependency">{t('nlp.dependency')}</option>
-              <option value="lexical_stats">{t('nlp.lexicalStats')}</option>
+              {commandOptions.map((option) => (
+                <option key={option.id} value={option.id} disabled={!selectedLanguage?.capabilities.includes(option.id)}>
+                  {t(option.labelKey)}
+                </option>
+              ))}
             </select>
           </label>
           <label className="field">
             <span>{t('corpus.language')}</span>
-            <select className="select-input" value={language} onChange={(event) => setLanguage(event.target.value)}>
-              <option value="en">English</option>
-              <option value="ja">日本語</option>
-              <option value="fr">Français</option>
-              <option value="af">Afrikaans</option>
-            </select>
+            <div className="field-inline">
+              <select className="select-input" value={language} onChange={(event) => setLanguage(event.target.value)}>
+                {languageCatalog.languages.map((item) => (
+                  <option key={item.code} value={item.code}>
+                    {item.name}
+                  </option>
+                ))}
+              </select>
+              <button className="icon-button" type="button" title={t('nlp.reloadLanguages')} disabled={isLanguageLoading} onClick={() => void refreshLanguages()}>
+                <RefreshCw size={16} />
+              </button>
+            </div>
           </label>
           {command === 'topic_model' && (
             <label className="field">
@@ -226,6 +276,28 @@ function NlpPanel({ documents }: Props) {
           )}
         </div>
 
+        {selectedLanguage && (
+          <div className="language-capability-panel">
+            <div className="toolbar">
+              <span className="badge">{selectedLanguage.built_in ? t('nlp.builtInLanguage') : t('nlp.addonLanguage')}</span>
+              {languageCatalog.fallback && <span className="badge unknown">{t('nlp.languageFallback')}</span>}
+              {(selectedLanguage.license_warnings ?? []).map((warning) => (
+                <span className={warning.license_type === 'nc' ? 'badge nc' : 'badge unknown'} key={`${warning.name}-${warning.license_type}`} title={warning.note}>
+                  {t('nlp.licenseWarning')}
+                </span>
+              ))}
+              {languageCatalog.addons_dir && <span className="muted">{t('nlp.addonsDir')}: {languageCatalog.addons_dir}</span>}
+            </div>
+            <div className="capability-list" aria-label={t('nlp.availableCapabilities')}>
+              {commandOptions.map((option) => (
+                <span className={selectedLanguage.capabilities.includes(option.id) ? 'capability-chip active' : 'capability-chip'} key={option.id}>
+                  {t(option.labelKey)}
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
+
         {command === 'ner' && (
           <div className="toolbar">
             {entityTypes.map((entity) => (
@@ -247,6 +319,14 @@ function NlpPanel({ documents }: Props) {
           </div>
         )}
 
+        {!isCommandSupported && selectedLanguage && (
+          <div className="muted">
+            {t('nlp.unsupportedCapability', {
+              analysis: t(commandOptions.find((option) => option.id === command)?.labelKey ?? 'nlp.analysis'),
+              language: selectedLanguage.name,
+            })}
+          </div>
+        )}
         {error && <div className="muted">{t('nlp.pythonRequired')}</div>}
         {!result && !error && <div className="empty-state"><Brain size={20} />{t('nlp.noResult')}</div>}
         {result !== undefined && result !== null && (

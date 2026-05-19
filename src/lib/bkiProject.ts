@@ -1,6 +1,5 @@
-import type { Annotation, BkiProjectFile, Code, CorpusDocument, KeywordGroup, SupportedLanguage } from '../types';
+import type { Annotation, BkiProjectFile, Code, CorpusDocument, KeywordGroup } from '../types';
 
-const languages: SupportedLanguage[] = ['ja', 'en', 'fr', 'af'];
 const groupByValues = ['month', 'year', 'document', 'category'] as const;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -42,7 +41,7 @@ function normalizeDocument(value: unknown): CorpusDocument | null {
       author: text(metadata.author) || undefined,
       category: text(metadata.category) || undefined,
       tags: stringArray(metadata.tags),
-      language: languages.includes(language as SupportedLanguage) ? (language as SupportedLanguage) : undefined,
+      language: language || undefined,
     },
   };
 }

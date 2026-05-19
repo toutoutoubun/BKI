@@ -1,4 +1,5 @@
-export type SupportedLanguage = 'ja' | 'en' | 'fr' | 'af';
+export type BuiltInLanguage = 'ja' | 'en' | 'fr' | 'af';
+export type SupportedLanguage = BuiltInLanguage | (string & {});
 
 export interface CorpusDocument {
   id: string;
