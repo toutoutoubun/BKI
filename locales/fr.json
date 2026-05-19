@@ -118,6 +118,12 @@
     "noData": "Aucun résultat",
     "chart": "Graphique de fréquence",
     "pythonFallback": "Comptage côté navigateur affiché car Python n'est pas connecté",
+    "dispersion": "Diagramme de dispersion",
+    "exportDispersionCsv": "CSV dispersion",
+    "noDispersionData": "Ajoutez des documents et des termes pour afficher le diagramme de dispersion",
+    "noDispersionHits": "Aucun terme correspondant trouvé",
+    "dispersionSummary": "{{count}} position(s) d'occurrence dans {{documents}} document(s)",
+    "hits": "occurrences",
     "cooccurrence": "Cooccurrence",
     "tfidf": "TF-IDF",
     "sentiment": "Sentiment"

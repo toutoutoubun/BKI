@@ -118,6 +118,12 @@
     "noData": "No results",
     "chart": "Frequency chart",
     "pythonFallback": "Showing browser-side counts because Python is not connected",
+    "dispersion": "Dispersion Plot",
+    "exportDispersionCsv": "Dispersion CSV",
+    "noDispersionData": "Add documents and search terms to show the dispersion plot",
+    "noDispersionHits": "No matching search terms found",
+    "dispersionSummary": "{{count}} occurrence position(s) across {{documents}} document(s)",
+    "hits": "hits",
     "cooccurrence": "Co-occurrence",
     "tfidf": "TF-IDF",
     "sentiment": "Sentiment"

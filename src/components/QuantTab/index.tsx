@@ -22,6 +22,7 @@ interface Props {
 }
 
 const colors = ['#226f54', '#2f6fed', '#b55b18', '#8a4f9e', '#ba3b46', '#597245'];
+const maxVisibleDispersionHits = 900;
 
 function downloadBlob(filename: string, blob: Blob) {
   const url = URL.createObjectURL(blob);
@@ -95,6 +96,10 @@ function parseKeywordGroupsCsv(content: string) {
   });
 }
 
+function escapeRegExp(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
 async function exportChartPng() {
   const svg = document.querySelector('#frequency-chart svg');
   if (!svg) return;
@@ -149,6 +154,70 @@ function QuantTab({ documents }: Props) {
       return row;
     });
   }, [frequencyResult]);
+
+  const dispersionGroups = useMemo(
+    () =>
+      keywordGroups
+        .map((group, index) => ({
+          ...group,
+          color: colors[index % colors.length],
+          terms: group.terms.map((term) => term.trim()).filter(Boolean),
+        }))
+        .filter((group) => group.terms.length > 0),
+    [keywordGroups],
+  );
+
+  const dispersionRows = useMemo(
+    () =>
+      documents.map((document) => {
+        const hits = dispersionGroups.flatMap((group) =>
+          group.terms.flatMap((term) => {
+            const matcher = new RegExp(escapeRegExp(term), 'giu');
+            return [...document.content.matchAll(matcher)].map((match) => ({
+              documentId: document.id,
+              documentName: document.filename,
+              groupName: group.name,
+              term,
+              offset: match.index ?? 0,
+              position: document.content.length ? ((match.index ?? 0) / document.content.length) * 100 : 0,
+              color: group.color,
+            }));
+          }),
+        );
+        return { document, hits };
+      }),
+    [documents, dispersionGroups],
+  );
+
+  const dispersionHitCount = useMemo(
+    () => dispersionRows.reduce((sum, row) => sum + row.hits.length, 0),
+    [dispersionRows],
+  );
+
+  const exportDispersionCsv = () => {
+    const rows = dispersionRows.flatMap((row) =>
+      row.hits.map((hit) => ({
+        document: row.document.filename,
+        group: hit.groupName,
+        term: hit.term,
+        offset: hit.offset,
+        position_percent: Number(hit.position.toFixed(2)),
+      })),
+    );
+    if (!rows.length) return;
+    downloadText('bki-dispersion.csv', toCsv(rows), 'text/csv;charset=utf-8');
+    addLog({
+      level: 'success',
+      stage: 'analysis.dispersion',
+      title: 'Dispersion plot data exported',
+      detail: `${rows.length} keyword occurrence(s) were exported to CSV.`,
+      data: {
+        documentCount: documents.length,
+        groupCount: dispersionGroups.length,
+        hitCount: rows.length,
+      },
+    });
+  };
 
   const exportKeywordGroupsCsv = () => {
     if (!keywordGroups.length) return;
@@ -298,6 +367,61 @@ function QuantTab({ documents }: Props) {
                 </LineChart>
               </ResponsiveContainer>
             </div>
+          )}
+        </div>
+      </section>
+      <section className="panel span-all">
+        <div className="panel-header">
+          <h2 className="section-title">{t('quant.dispersion')}</h2>
+          <button className="ghost-button" type="button" disabled={dispersionHitCount === 0} onClick={exportDispersionCsv}>
+            <Download size={17} />
+            {t('quant.exportDispersionCsv')}
+          </button>
+        </div>
+        <div className="panel-body">
+          {documents.length === 0 || dispersionGroups.length === 0 ? (
+            <div className="empty-state">{t('quant.noDispersionData')}</div>
+          ) : (
+            <>
+              <div className="dispersion-summary">
+                <span className="muted">{t('quant.dispersionSummary', { count: dispersionHitCount, documents: documents.length })}</span>
+                <div className="dispersion-legend">
+                  {dispersionGroups.map((group) => (
+                    <span className="legend-item" key={group.id}>
+                      <span className="legend-swatch" style={{ backgroundColor: group.color }} />
+                      {group.name}
+                    </span>
+                  ))}
+                </div>
+              </div>
+              {dispersionHitCount === 0 ? (
+                <div className="empty-state">{t('quant.noDispersionHits')}</div>
+              ) : (
+                <div className="dispersion-plot" role="img" aria-label={t('quant.dispersion')}>
+                  {dispersionRows.map((row) => {
+                    const visibleHits = row.hits.slice(0, maxVisibleDispersionHits);
+                    return (
+                      <div className="dispersion-row" key={row.document.id}>
+                        <div className="dispersion-label">
+                          <strong>{row.document.filename}</strong>
+                          <span className="muted">{row.hits.length} {t('quant.hits')}</span>
+                        </div>
+                        <div className="dispersion-track">
+                          {visibleHits.map((hit, index) => (
+                            <span
+                              className="dispersion-hit"
+                              key={`${hit.groupName}-${hit.term}-${hit.offset}-${index}`}
+                              title={`${hit.groupName}: ${hit.term} (${Math.round(hit.position)}%)`}
+                              style={{ left: `${hit.position}%`, backgroundColor: hit.color }}
+                            />
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </>
           )}
         </div>
       </section>

@@ -118,6 +118,12 @@
     "noData": "結果がありません",
     "chart": "頻度グラフ",
     "pythonFallback": "Python接続なしのためブラウザ内集計を表示しています",
+    "dispersion": "分散プロット",
+    "exportDispersionCsv": "分散CSV",
+    "noDispersionData": "文書と検索語を追加すると分散プロットを表示できます",
+    "noDispersionHits": "一致する検索語がありません",
+    "dispersionSummary": "{{documents}} 文書内の {{count}} 件の出現位置",
+    "hits": "件",
     "cooccurrence": "共起分析",
     "tfidf": "TF-IDF",
     "sentiment": "センチメント"

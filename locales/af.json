@@ -118,6 +118,12 @@
     "noData": "Geen resultate",
     "chart": "Frekwensiegrafiek",
     "pythonFallback": "Blaaier-telling word gewys omdat Python nie gekoppel is nie",
+    "dispersion": "Verspreidingsplot",
+    "exportDispersionCsv": "Verspreiding CSV",
+    "noDispersionData": "Voeg dokumente en soekterme by om die verspreidingsplot te wys",
+    "noDispersionHits": "Geen ooreenstemmende soekterme gevind nie",
+    "dispersionSummary": "{{count}} voorkomsposisie(s) oor {{documents}} dokument(e)",
+    "hits": "treffers",
     "cooccurrence": "Saamvoorkoms",
     "tfidf": "TF-IDF",
     "sentiment": "Sentiment"
