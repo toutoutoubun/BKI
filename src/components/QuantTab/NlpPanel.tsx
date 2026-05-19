@@ -7,6 +7,8 @@ import { useProcessStore } from '../../store/processStore';
 import type { CorpusDocument } from '../../types';
 
 type NlpCommand = 'ner' | 'topic_model' | 'similarity' | 'pos' | 'dependency' | 'lexical_stats';
+type TopicMethod = 'nmf' | 'lda';
+type MetadataField = 'month' | 'year' | 'document' | 'category';
 
 interface Props {
   documents: CorpusDocument[];
@@ -35,8 +37,9 @@ function resultCount(command: NlpCommand, result: unknown): number {
   return 0;
 }
 
-function renderPreview(command: NlpCommand, result: unknown, t: (key: string) => string) {
+function renderPreview(command: NlpCommand, result: unknown, documents: CorpusDocument[], t: (key: string) => string) {
   const data = result as Record<string, any>;
+  const documentName = (id: string) => documents.find((document) => document.id === id)?.filename ?? id;
   if (command === 'ner') {
     return (data.entities ?? []).slice(0, 8).map((entity: any) => (
       <div className="result-row compact" key={`${entity.document_id}-${entity.start}-${entity.text}`}>
@@ -54,12 +57,22 @@ function renderPreview(command: NlpCommand, result: unknown, t: (key: string) =>
     ));
   }
   if (command === 'similarity') {
-    return (data.ranked ?? []).slice(0, 8).map((item: any) => (
-      <div className="result-row compact" key={item.document_id}>
-        <strong>{item.document_id}</strong>
-        <span className="muted">{t('nlp.score')}: {Number(item.score).toFixed(3)}</span>
-      </div>
-    ));
+    return (
+      <>
+        {(data.ranked ?? []).slice(0, 8).map((item: any) => (
+          <div className="result-row compact" key={item.document_id}>
+            <strong>{documentName(item.document_id)}</strong>
+            <span className="muted">{t('nlp.score')}: {Number(item.score).toFixed(3)}</span>
+          </div>
+        ))}
+        {Object.entries(data.clusters ?? {}).map(([clusterId, ids]) => (
+          <div className="result-row compact" key={`cluster-${clusterId}`}>
+            <strong>{t('nlp.cluster')} {Number(clusterId) + 1}</strong>
+            <span className="muted">{(ids as string[]).map(documentName).join(' · ')}</span>
+          </div>
+        ))}
+      </>
+    );
   }
   if (command === 'pos') {
     return Object.entries(data.distribution ?? {}).slice(0, 8).map(([period, values]) => (
@@ -95,6 +108,10 @@ function NlpPanel({ documents }: Props) {
   const [selectedEntities, setSelectedEntities] = useState(entityTypes);
   const [selectedPosTags, setSelectedPosTags] = useState(posTags);
   const [topicCount, setTopicCount] = useState(5);
+  const [topicMethod, setTopicMethod] = useState<TopicMethod>('nmf');
+  const [topicWordCount, setTopicWordCount] = useState(10);
+  const [topicMetadataField, setTopicMetadataField] = useState<MetadataField>('month');
+  const [clusterCount, setClusterCount] = useState(3);
   const [targetEntity, setTargetEntity] = useState('');
   const [queryDocumentId, setQueryDocumentId] = useState('');
   const [languageCatalog, setLanguageCatalog] = useState<LanguageCatalog>({ languages: fallbackLanguages });
@@ -139,8 +156,8 @@ function NlpPanel({ documents }: Props) {
   const payload = () => {
     const base = { documents, language };
     if (command === 'ner') return { ...base, entity_types: selectedEntities, group_by: 'month' };
-    if (command === 'topic_model') return { ...base, method: 'nmf', n_topics: topicCount, n_words: 10, metadata_field: 'month' };
-    if (command === 'similarity') return { ...base, method: 'tfidf_cosine', query_document_id: activeDocumentId, n_clusters: Math.min(4, Math.max(1, documents.length)) };
+    if (command === 'topic_model') return { ...base, method: topicMethod, n_topics: topicCount, n_words: topicWordCount, metadata_field: topicMetadataField };
+    if (command === 'similarity') return { ...base, method: 'tfidf_cosine', query_document_id: activeDocumentId, n_clusters: Math.min(clusterCount, Math.max(1, documents.length)) };
     if (command === 'pos') return { ...base, group_by: 'month', pos_tags: selectedPosTags };
     if (command === 'dependency') return { ...base, target_entity: targetEntity };
     return base;
@@ -168,11 +185,11 @@ function NlpPanel({ documents }: Props) {
             : command === 'pos'
               ? { posTags: selectedPosTags }
               : command === 'topic_model'
-                ? { topicCount }
+                ? { topicCount, topicMethod, topicWordCount, topicMetadataField }
                 : command === 'dependency'
                   ? { targetEntity }
                   : command === 'similarity'
-                    ? { queryDocumentId: activeDocumentId }
+                    ? { queryDocumentId: activeDocumentId, clusterCount }
                     : {},
       },
     });
@@ -250,23 +267,59 @@ function NlpPanel({ documents }: Props) {
             </div>
           </label>
           {command === 'topic_model' && (
-            <label className="field">
-              <span>{t('nlp.topicCount')}</span>
-              <input className="text-input" type="range" min={2} max={20} value={topicCount} onChange={(event) => setTopicCount(Number(event.target.value))} />
-              <span className="muted">{topicCount}</span>
-            </label>
+            <>
+              <label className="field">
+                <span>{t('nlp.topicMethod')}</span>
+                <select className="select-input" value={topicMethod} onChange={(event) => setTopicMethod(event.target.value as TopicMethod)}>
+                  <option value="nmf">{t('nlp.topicMethodNmf')}</option>
+                  <option value="lda">{t('nlp.topicMethodLda')}</option>
+                </select>
+              </label>
+              <label className="field">
+                <span>{t('nlp.topicTimelineField')}</span>
+                <select className="select-input" value={topicMetadataField} onChange={(event) => setTopicMetadataField(event.target.value as MetadataField)}>
+                  <option value="month">{t('nlp.fieldMonth')}</option>
+                  <option value="year">{t('nlp.fieldYear')}</option>
+                  <option value="document">{t('nlp.fieldDocument')}</option>
+                  <option value="category">{t('nlp.fieldCategory')}</option>
+                </select>
+              </label>
+              <label className="field">
+                <span>{t('nlp.topicCount')}</span>
+                <input className="text-input" type="range" min={2} max={20} value={topicCount} onChange={(event) => setTopicCount(Number(event.target.value))} />
+                <span className="muted">{topicCount}</span>
+              </label>
+              <label className="field">
+                <span>{t('nlp.topicWordCount')}</span>
+                <input className="text-input" type="number" min={3} max={30} value={topicWordCount} onChange={(event) => setTopicWordCount(Number(event.target.value))} />
+              </label>
+            </>
           )}
           {command === 'similarity' && (
-            <label className="field">
-              <span>{t('nlp.queryDocument')}</span>
-              <select className="select-input" value={activeDocumentId} onChange={(event) => setQueryDocumentId(event.target.value)}>
-                {documents.map((document) => (
-                  <option key={document.id} value={document.id}>
-                    {document.filename}
-                  </option>
-                ))}
-              </select>
-            </label>
+            <>
+              <label className="field">
+                <span>{t('nlp.queryDocument')}</span>
+                <select className="select-input" value={activeDocumentId} onChange={(event) => setQueryDocumentId(event.target.value)}>
+                  {documents.map((document) => (
+                    <option key={document.id} value={document.id}>
+                      {document.filename}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="field">
+                <span>{t('nlp.clusterCount')}</span>
+                <input
+                  className="text-input"
+                  type="range"
+                  min={1}
+                  max={Math.max(1, Math.min(12, documents.length || 1))}
+                  value={Math.min(clusterCount, Math.max(1, documents.length || 1))}
+                  onChange={(event) => setClusterCount(Number(event.target.value))}
+                />
+                <span className="muted">{Math.min(clusterCount, Math.max(1, documents.length || 1))}</span>
+              </label>
+            </>
           )}
           {command === 'dependency' && (
             <label className="field">
@@ -335,7 +388,7 @@ function NlpPanel({ documents }: Props) {
               <strong>{t('nlp.resultCount')}</strong>
               <span className="muted">{resultCount(command, result)}</span>
             </div>
-            {renderPreview(command, result, t)}
+            {renderPreview(command, result, documents, t)}
           </div>
         )}
       </div>
