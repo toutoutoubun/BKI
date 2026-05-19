@@ -13,6 +13,7 @@ interface AnalysisStore {
   setGroupBy: (groupBy: AnalysisStore['groupBy']) => void;
   setStellarPath: (stellarPath: string) => void;
   addKeywordGroup: () => void;
+  replaceKeywordGroups: (groups: Array<Pick<KeywordGroup, 'name' | 'terms'>>) => void;
   updateKeywordGroup: (id: string, patch: Partial<KeywordGroup>) => void;
   removeKeywordGroup: (id: string) => void;
   runFrequency: (documents: CorpusDocument[]) => Promise<void>;
@@ -90,6 +91,16 @@ export const useAnalysisStore = create<AnalysisStore>((set, get) => ({
     set((state) => ({
       keywordGroups: [...state.keywordGroups, { id: id(), name: `Group ${state.keywordGroups.length + 1}`, terms: [] }],
     })),
+  replaceKeywordGroups: (groups) =>
+    set({
+      keywordGroups: groups.map((group, index) => ({
+        id: id(),
+        name: group.name.trim() || `Group ${index + 1}`,
+        terms: group.terms.map((term) => term.trim()).filter(Boolean),
+      })),
+      frequencyResult: undefined,
+      error: undefined,
+    }),
   updateKeywordGroup: (id, patch) =>
     set((state) => ({
       keywordGroups: state.keywordGroups.map((group) => (group.id === id ? { ...group, ...patch } : group)),

@@ -1,5 +1,5 @@
-import { Download, Play, Plus, Trash2 } from 'lucide-react';
-import { useMemo } from 'react';
+import { Download, Play, Plus, Trash2, Upload } from 'lucide-react';
+import { useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   CartesianGrid,
@@ -12,6 +12,7 @@ import {
   YAxis,
 } from 'recharts';
 import { useAnalysisStore } from '../../store/analysisStore';
+import { useProcessStore } from '../../store/processStore';
 import type { CorpusDocument } from '../../types';
 import NlpPanel from './NlpPanel';
 import TextMiningPanel from './TextMiningPanel';
@@ -29,6 +30,69 @@ function downloadBlob(filename: string, blob: Blob) {
   link.download = filename;
   link.click();
   URL.revokeObjectURL(url);
+}
+
+function downloadText(filename: string, content: string, type: string) {
+  downloadBlob(filename, new Blob([content], { type }));
+}
+
+function toCsv(rows: Array<Record<string, string | number>>) {
+  if (!rows.length) return '';
+  const headers = Object.keys(rows[0]);
+  const escape = (value: string | number) => `"${String(value).replaceAll('"', '""')}"`;
+  return [headers.join(','), ...rows.map((row) => headers.map((header) => escape(row[header] ?? '')).join(','))].join('\n');
+}
+
+function parseCsvRows(content: string) {
+  const rows: string[][] = [];
+  let row: string[] = [];
+  let cell = '';
+  let inQuotes = false;
+
+  for (let index = 0; index < content.length; index += 1) {
+    const char = content[index];
+    const next = content[index + 1];
+    if (char === '"' && inQuotes && next === '"') {
+      cell += '"';
+      index += 1;
+    } else if (char === '"') {
+      inQuotes = !inQuotes;
+    } else if (char === ',' && !inQuotes) {
+      row.push(cell.trim());
+      cell = '';
+    } else if ((char === '\n' || char === '\r') && !inQuotes) {
+      if (char === '\r' && next === '\n') index += 1;
+      row.push(cell.trim());
+      if (row.some(Boolean)) rows.push(row);
+      row = [];
+      cell = '';
+    } else {
+      cell += char;
+    }
+  }
+
+  row.push(cell.trim());
+  if (row.some(Boolean)) rows.push(row);
+  return rows;
+}
+
+function parseKeywordGroupsCsv(content: string) {
+  const rows = parseCsvRows(content);
+  if (!rows.length) return [];
+  const header = rows[0].map((cell) => cell.toLowerCase());
+  const hasHeader = header.includes('group') || header.includes('name') || header.includes('terms');
+  const groupIndex = hasHeader ? Math.max(header.indexOf('group'), header.indexOf('name')) : 0;
+  const termsIndex = hasHeader ? header.indexOf('terms') : 1;
+
+  return rows.slice(hasHeader ? 1 : 0).flatMap((row, index) => {
+    const name = row[groupIndex] || `Group ${index + 1}`;
+    const rawTerms = termsIndex >= 0 ? row[termsIndex] : row.slice(1).join(';');
+    const terms = rawTerms
+      .split(/[;,]/)
+      .map((term) => term.trim())
+      .filter(Boolean);
+    return terms.length ? [{ name, terms }] : [];
+  });
 }
 
 async function exportChartPng() {
@@ -62,6 +126,8 @@ async function exportChartPng() {
 
 function QuantTab({ documents }: Props) {
   const { t } = useTranslation();
+  const keywordInputRef = useRef<HTMLInputElement>(null);
+  const [keywordImportMessage, setKeywordImportMessage] = useState('');
   const keywordGroups = useAnalysisStore((state) => state.keywordGroups);
   const frequencyResult = useAnalysisStore((state) => state.frequencyResult);
   const groupBy = useAnalysisStore((state) => state.groupBy);
@@ -69,9 +135,11 @@ function QuantTab({ documents }: Props) {
   const error = useAnalysisStore((state) => state.error);
   const setGroupBy = useAnalysisStore((state) => state.setGroupBy);
   const addKeywordGroup = useAnalysisStore((state) => state.addKeywordGroup);
+  const replaceKeywordGroups = useAnalysisStore((state) => state.replaceKeywordGroups);
   const updateKeywordGroup = useAnalysisStore((state) => state.updateKeywordGroup);
   const removeKeywordGroup = useAnalysisStore((state) => state.removeKeywordGroup);
   const runFrequency = useAnalysisStore((state) => state.runFrequency);
+  const addLog = useProcessStore((state) => state.addLog);
 
   const chartData = useMemo(() => {
     if (!frequencyResult) return [];
@@ -82,12 +150,66 @@ function QuantTab({ documents }: Props) {
     });
   }, [frequencyResult]);
 
+  const exportKeywordGroupsCsv = () => {
+    if (!keywordGroups.length) return;
+    const rows = keywordGroups.map((group) => ({
+      group: group.name,
+      terms: group.terms.join('; '),
+    }));
+    downloadText('bki-keyword-groups.csv', toCsv(rows), 'text/csv;charset=utf-8');
+    addLog({
+      level: 'success',
+      stage: 'analysis.keywords',
+      title: 'Keyword groups exported',
+      detail: `${rows.length} keyword group(s) were exported to CSV.`,
+      data: { groupCount: rows.length },
+    });
+  };
+
+  const importKeywordGroupsCsv = async (file: File) => {
+    setKeywordImportMessage('');
+    try {
+      const groups = parseKeywordGroupsCsv(await file.text());
+      if (!groups.length) throw new Error('No keyword groups found.');
+      replaceKeywordGroups(groups);
+      setKeywordImportMessage(t('quant.importGroupsSuccess', { count: groups.length }));
+      addLog({
+        level: 'success',
+        stage: 'analysis.keywords',
+        title: 'Keyword groups imported',
+        detail: `${groups.length} keyword group(s) were imported from ${file.name}.`,
+        data: {
+          filename: file.name,
+          groupCount: groups.length,
+          termCount: groups.reduce((sum, group) => sum + group.terms.length, 0),
+        },
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setKeywordImportMessage(t('quant.importGroupsError'));
+      addLog({
+        level: 'error',
+        stage: 'analysis.keywords',
+        title: 'Keyword group import failed',
+        detail: message,
+      });
+    }
+  };
+
   return (
     <div className="work-grid">
       <section className="panel">
         <div className="panel-header">
           <h2 className="section-title">{t('quant.frequency')}</h2>
           <div className="toolbar">
+            <button className="ghost-button" type="button" onClick={() => keywordInputRef.current?.click()}>
+              <Upload size={17} />
+              {t('quant.importGroups')}
+            </button>
+            <button className="ghost-button" type="button" disabled={!keywordGroups.length} onClick={exportKeywordGroupsCsv}>
+              <Download size={17} />
+              {t('quant.exportGroups')}
+            </button>
             <button className="ghost-button" type="button" onClick={addKeywordGroup}>
               <Plus size={17} />
               {t('quant.addGroup')}
@@ -99,6 +221,18 @@ function QuantTab({ documents }: Props) {
           </div>
         </div>
         <div className="panel-body">
+          <input
+            ref={keywordInputRef}
+            type="file"
+            accept=".csv,text/csv"
+            hidden
+            onChange={(event) => {
+              const file = event.target.files?.[0];
+              if (file) void importKeywordGroupsCsv(file);
+              event.currentTarget.value = '';
+            }}
+          />
+          {keywordImportMessage && <span className="muted">{keywordImportMessage}</span>}
           <label className="field">
             <span>{t('quant.groupBy')}</span>
             <select className="select-input" value={groupBy} onChange={(event) => setGroupBy(event.target.value as typeof groupBy)}>
