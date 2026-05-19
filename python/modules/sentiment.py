@@ -4,12 +4,19 @@ from collections import defaultdict
 from typing import Any
 
 from .common import compile_terms, documents, group_key, ordered_periods
+from .lang_loader import load_sentiment_lexicon
 
 
 def run(payload: dict[str, Any]) -> dict[str, Any]:
     docs = documents(payload)
     targets: dict[str, list[str]] = payload.get("targets", {})
-    lexicon = {str(item.get("word")): float(item.get("score", 0)) for item in payload.get("lexicon", [])}
+    language = payload.get("language") or "en"
+    lexicon_source = "request"
+    lexicon_items = payload.get("lexicon", [])
+    if not lexicon_items:
+        lexicon_items = load_sentiment_lexicon(language)
+        lexicon_source = "language_addon"
+    lexicon = {str(item.get("word")): float(item.get("score", 0)) for item in lexicon_items}
     window = int(payload.get("window") or 80)
     group_by = payload.get("group_by", "month")
 
@@ -49,5 +56,6 @@ def run(payload: dict[str, Any]) -> dict[str, Any]:
         "targets": list(targets.keys()),
         "scores": scores,
         "hits": {target: dict(periods_map) for target, periods_map in hits.items()},
+        "lexicon_source": lexicon_source,
+        "lexicon_size": len(lexicon),
     }
-

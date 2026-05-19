@@ -14,6 +14,14 @@ BUILTIN_LANGUAGES: dict[str, dict[str, Any]] = {
         "ner_model": "en_core_web_sm",
         "pos_model": "en_core_web_sm",
         "built_in": True,
+        "lexicon": [
+            {"word": "good", "score": 1},
+            {"word": "strong", "score": 1},
+            {"word": "support", "score": 1},
+            {"word": "bad", "score": -1},
+            {"word": "weak", "score": -1},
+            {"word": "risk", "score": -1},
+        ],
         "capabilities": [
             "frequency",
             "kwic",
@@ -38,6 +46,14 @@ BUILTIN_LANGUAGES: dict[str, dict[str, Any]] = {
         "ner_model": "ja_ginza",
         "pos_model": "ja_ginza",
         "built_in": True,
+        "lexicon": [
+            {"word": "良い", "score": 1},
+            {"word": "支持", "score": 1},
+            {"word": "強い", "score": 1},
+            {"word": "悪い", "score": -1},
+            {"word": "弱い", "score": -1},
+            {"word": "リスク", "score": -1},
+        ],
         "capabilities": ["frequency", "kwic", "sentiment", "cooccurrence", "tfidf", "topic_model", "similarity", "lexical_stats", "ner", "pos"],
         "credits": [
             {"name": "GiNZA", "authors": "Megagon Labs", "url": "https://megagonlabs.github.io/ginza/", "license": "Apache 2.0", "license_type": "open"},
@@ -51,6 +67,14 @@ BUILTIN_LANGUAGES: dict[str, dict[str, Any]] = {
         "ner_model": "fr_core_news_sm",
         "pos_model": "fr_core_news_sm",
         "built_in": True,
+        "lexicon": [
+            {"word": "bon", "score": 1},
+            {"word": "fort", "score": 1},
+            {"word": "soutien", "score": 1},
+            {"word": "mauvais", "score": -1},
+            {"word": "faible", "score": -1},
+            {"word": "risque", "score": -1},
+        ],
         "capabilities": [
             "frequency",
             "kwic",
@@ -75,6 +99,14 @@ BUILTIN_LANGUAGES: dict[str, dict[str, Any]] = {
         "ner_model": "xx_ent_wiki_sm",
         "pos_model": "xx_ent_wiki_sm",
         "built_in": True,
+        "lexicon": [
+            {"word": "goed", "score": 1},
+            {"word": "sterk", "score": 1},
+            {"word": "steun", "score": 1},
+            {"word": "sleg", "score": -1},
+            {"word": "swak", "score": -1},
+            {"word": "risiko", "score": -1},
+        ],
         "capabilities": ["frequency", "kwic", "sentiment", "cooccurrence", "tfidf", "topic_model", "similarity", "lexical_stats", "ner", "pos"],
         "credits": [
             {"name": "spaCy xx_ent_wiki_sm", "authors": "Explosion AI", "url": "https://spacy.io", "license": "MIT", "license_type": "open"}
@@ -177,6 +209,31 @@ def get_tokenizer(lang_config: dict[str, Any]) -> Callable[[str], list[str]]:
         except Exception:  # noqa: BLE001
             return lambda text: text.split()
     return lambda text: text.split()
+
+
+def load_sentiment_lexicon(language: str | None) -> list[dict[str, float | str]]:
+    lang_config = get_language_config(language)
+    lexicon_path = lang_config.get("lexicon_path")
+    entries: list[dict[str, float | str]] = []
+
+    if lexicon_path:
+        path = Path(str(lexicon_path)).expanduser()
+        if path.exists():
+            for line in path.read_text(encoding="utf-8").splitlines():
+                stripped = line.strip()
+                if not stripped or stripped.startswith("#"):
+                    continue
+                cells = [cell.strip() for cell in stripped.split("\t")]
+                if len(cells) < 2 or cells[0].casefold() == "word":
+                    continue
+                try:
+                    entries.append({"word": cells[0], "score": float(cells[1])})
+                except ValueError:
+                    continue
+
+    if entries:
+        return entries
+    return list(lang_config.get("lexicon") or [])
 
 
 def get_ner_pipeline(lang_config: dict[str, Any]):

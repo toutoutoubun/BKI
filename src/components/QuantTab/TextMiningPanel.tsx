@@ -134,6 +134,7 @@ function TextMiningPanel({ documents }: Props) {
   const [isRunning, setIsRunning] = useState(false);
 
   const firstKeyword = useMemo(() => keywordGroups.flatMap((group) => group.terms)[0] ?? '', [keywordGroups]);
+  const sentimentLanguage = useMemo(() => documents.find((document) => document.metadata.language)?.metadata.language ?? 'en', [documents]);
   const effectiveQuery = query.trim() || firstKeyword;
   const effectiveTerms = parseTerms(terms).length ? parseTerms(terms) : keywordGroups.flatMap((group) => group.terms).filter(Boolean);
 
@@ -145,6 +146,7 @@ function TextMiningPanel({ documents }: Props) {
     return {
       documents,
       targets: { [t('mining.defaultTarget')]: targetTerms },
+      language: sentimentLanguage,
       lexicon: parseLexicon(lexiconText),
       window: windowSize,
       group_by: groupBy,
@@ -168,6 +170,8 @@ function TextMiningPanel({ documents }: Props) {
         documentCount: documents.length,
         windowSize,
         topN,
+        language: command === 'sentiment' ? sentimentLanguage : undefined,
+        lexiconMode: command === 'sentiment' && !parseLexicon(lexiconText).length ? 'language_addon' : 'manual',
       },
     });
 
@@ -251,6 +255,15 @@ function TextMiningPanel({ documents }: Props) {
           <label className="field">
             <span>{t('mining.lexicon')}</span>
             <textarea className="text-area" rows={5} value={lexiconText} onChange={(event) => setLexiconText(event.target.value)} />
+            <div className="toolbar">
+              <button className="ghost-button" type="button" onClick={() => setLexiconText('')}>
+                {t('mining.useAddonLexicon')}
+              </button>
+              <button className="ghost-button" type="button" onClick={() => setLexiconText(defaultLexicon.map((item) => `${item.word}, ${item.score}`).join('\n'))}>
+                {t('mining.useManualLexicon')}
+              </button>
+              <span className="muted">{t('mining.lexiconAddonHint', { language: sentimentLanguage.toUpperCase() })}</span>
+            </div>
           </label>
         )}
 
@@ -262,6 +275,14 @@ function TextMiningPanel({ documents }: Props) {
               <strong>{t('nlp.resultCount')}</strong>
               <span className="muted">{resultCount(command, result)}</span>
             </div>
+            {command === 'sentiment' && (
+              <div className="result-row compact">
+                <strong>{t('mining.lexiconSource')}</strong>
+                <span className="muted">
+                  {result.lexicon_source === 'language_addon' ? t('mining.lexiconSourceAddon') : t('mining.lexiconSourceManual')} · {result.lexicon_size ?? 0}
+                </span>
+              </div>
+            )}
             {renderResult(command, result, t)}
           </div>
         )}
