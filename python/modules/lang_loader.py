@@ -205,6 +205,52 @@ def get_languages(payload: dict[str, Any] | None = None) -> dict[str, Any]:
     return {"languages": languages, "addons_dir": str(ADDONS_DIR)}
 
 
+def get_addon_locales(payload: dict[str, Any] | None = None) -> dict[str, Any]:
+    del payload
+    locales: list[dict[str, Any]] = []
+    if not ADDONS_DIR.exists():
+        return {"locales": locales, "addons_dir": str(ADDONS_DIR)}
+
+    for addon_dir in ADDONS_DIR.iterdir():
+        manifest_path = addon_dir / "manifest.json"
+        if not manifest_path.exists():
+            continue
+        try:
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        if manifest.get("type") != "language":
+            continue
+
+        provides = manifest.get("provides") or {}
+        language_code = str(manifest.get("language_code") or "").strip()
+        locale_code = str(provides.get("locale") or language_code).strip()
+        if not locale_code:
+            continue
+        locale_path = addon_dir / "locales" / f"{locale_code}.json"
+        if not locale_path.exists():
+            continue
+
+        try:
+            translation = json.loads(locale_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        if not isinstance(translation, dict):
+            continue
+
+        locales.append(
+            {
+                "code": locale_code,
+                "language_code": language_code or locale_code,
+                "name": manifest.get("name", locale_code),
+                "translation": translation,
+                "addon_path": str(addon_dir),
+            }
+        )
+
+    return {"locales": locales, "addons_dir": str(ADDONS_DIR)}
+
+
 def get_language_config(language: str | None) -> dict[str, Any]:
     langs = load_installed_languages()
     return langs.get(language or "en") or langs["en"]

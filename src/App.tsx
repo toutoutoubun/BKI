@@ -1,5 +1,5 @@
 import { Activity, BarChart3, BookOpen, FileDown, FlaskConical, Languages, Settings, Tags } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import AboutModal from './components/AboutModal';
 import CorpusPanel from './components/CorpusPanel';
@@ -10,6 +10,7 @@ import ProcessInspector from './components/ProcessInspector';
 import PreprocessTab from './components/PreprocessTab';
 import QdaTab from './components/QdaTab';
 import QuantTab from './components/QuantTab';
+import { loadAddonLocales } from './lib/languageAddons';
 import { useCorpusStore } from './store/corpusStore';
 import { useProcessStore } from './store/processStore';
 
@@ -22,11 +23,19 @@ const tabIcons = {
   export: FileDown,
 };
 
+const baseInterfaceLanguages = [
+  { code: 'ja', name: '日本語' },
+  { code: 'en', name: 'English' },
+  { code: 'fr', name: 'Français' },
+  { code: 'af', name: 'Afrikaans' },
+];
+
 function App() {
   const { t, i18n } = useTranslation();
   const [activeTab, setActiveTab] = useState<TabId>('preprocess');
   const [isAboutOpen, setIsAboutOpen] = useState(false);
   const [isGuideOpen, setIsGuideOpen] = useState(() => localStorage.getItem('bki.guide.seen') !== 'true');
+  const [interfaceLanguages, setInterfaceLanguages] = useState(baseInterfaceLanguages);
   const documents = useCorpusStore((state) => state.documents);
   const selectedIds = useCorpusStore((state) => state.selectedIds);
   const isProcessOpen = useProcessStore((state) => state.isOpen);
@@ -50,6 +59,34 @@ function App() {
     localStorage.setItem('bki.language', language);
     await i18n.changeLanguage(language);
   };
+
+  useEffect(() => {
+    let isMounted = true;
+    loadAddonLocales().then((catalog) => {
+      if (!isMounted || !catalog.locales.length) return;
+
+      const addonLanguages = catalog.locales
+        .filter((locale) => locale.code && locale.translation && typeof locale.translation === 'object')
+        .map((locale) => {
+          i18n.addResourceBundle(locale.code, 'translation', locale.translation, true, true);
+          return { code: locale.code, name: locale.name || locale.code.toUpperCase() };
+        })
+        .filter((locale) => !baseInterfaceLanguages.some((base) => base.code === locale.code));
+
+      if (addonLanguages.length) {
+        setInterfaceLanguages([...baseInterfaceLanguages, ...addonLanguages]);
+      }
+
+      const storedLanguage = localStorage.getItem('bki.language');
+      if (storedLanguage && addonLanguages.some((locale) => locale.code === storedLanguage)) {
+        void i18n.changeLanguage(storedLanguage);
+      }
+    });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [i18n]);
 
   const closeGuide = () => {
     localStorage.setItem('bki.guide.seen', 'true');
@@ -81,10 +118,11 @@ function App() {
           <label className="language-picker">
             <Languages size={17} />
             <select value={i18n.language} onChange={(event) => void changeLanguage(event.target.value)}>
-              <option value="ja">日本語</option>
-              <option value="en">English</option>
-              <option value="fr">Français</option>
-              <option value="af">Afrikaans</option>
+              {interfaceLanguages.map((language) => (
+                <option key={language.code} value={language.code}>
+                  {language.name}
+                </option>
+              ))}
             </select>
           </label>
         </div>

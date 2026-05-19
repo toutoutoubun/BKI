@@ -38,6 +38,21 @@ export interface LanguageCatalog {
   error?: string;
 }
 
+export interface AddonLocaleInfo {
+  code: string;
+  language_code?: string;
+  name: string;
+  translation: Record<string, unknown>;
+  addon_path?: string;
+}
+
+export interface AddonLocaleCatalog {
+  locales: AddonLocaleInfo[];
+  addons_dir?: string;
+  fallback?: boolean;
+  error?: string;
+}
+
 export const fallbackLanguages: LanguageInfo[] = [
   {
     code: 'en',
@@ -86,6 +101,25 @@ export async function loadAvailableLanguages(): Promise<LanguageCatalog> {
   } catch (error) {
     return {
       languages: fallbackLanguages,
+      fallback: true,
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
+export async function loadAddonLocales(): Promise<AddonLocaleCatalog> {
+  try {
+    const response = await invoke<AddonLocaleCatalog>('run_python', {
+      command: 'get_addon_locales',
+      payload: {},
+    });
+    return {
+      locales: Array.isArray(response.locales) ? response.locales : [],
+      addons_dir: response.addons_dir,
+    };
+  } catch (error) {
+    return {
+      locales: [],
       fallback: true,
       error: error instanceof Error ? error.message : String(error),
     };

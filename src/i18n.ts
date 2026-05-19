@@ -17,11 +17,9 @@ void i18n.use(initReactI18next).init({
   },
   lng: storedLanguage || browserLanguage,
   fallbackLng: 'ja',
-  supportedLngs: ['ja', 'en', 'fr', 'af'],
   interpolation: {
     escapeValue: false,
   },
 });
 
 export default i18n;
-

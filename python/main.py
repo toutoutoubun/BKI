@@ -20,7 +20,7 @@ from modules import (
     tfidf,
     topic_model,
 )
-from modules.lang_loader import get_languages
+from modules.lang_loader import get_addon_locales, get_languages
 
 DISPATCH = {
     "ingest": ingest.run,
@@ -37,6 +37,7 @@ DISPATCH = {
     "dependency": dependency.run,
     "lexical_stats": lexical_stats.run,
     "get_languages": get_languages,
+    "get_addon_locales": get_addon_locales,
     "get_credits": credits.run,
     "save_sqlite_project": persistence.save_project,
     "load_sqlite_project": persistence.load_project,
