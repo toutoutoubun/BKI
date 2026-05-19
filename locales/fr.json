@@ -71,6 +71,7 @@
     "codes": "Codes",
     "addCode": "Ajouter un code",
     "annotations": "Annotations",
+    "editAnnotation": "Modifier l'annotation",
     "codeLabel": "Libellé",
     "description": "Description",
     "parentCode": "Code parent",

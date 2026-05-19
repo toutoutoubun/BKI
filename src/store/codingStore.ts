@@ -75,10 +75,24 @@ export const useCodingStore = create<CodingStore>((set) => ({
       },
     });
   },
-  updateAnnotation: (id, patch) =>
+  updateAnnotation: (id, patch) => {
     set((state) => ({
       annotations: state.annotations.map((ann) => (ann.id === id ? { ...ann, ...patch } : ann)),
-    })),
+    }));
+    useProcessStore.getState().addLog({
+      level: 'success',
+      stage: 'qda.annotation',
+      title: 'Annotation updated',
+      detail: `Updated annotation ${id}.`,
+      data: {
+        annotationId: id,
+        start: patch.start,
+        end: patch.end,
+        codeCount: patch.codeIds?.length,
+        hasMemo: typeof patch.memo === 'string' ? Boolean(patch.memo.trim()) : undefined,
+      },
+    });
+  },
   removeAnnotation: (id) =>
     set((state) => ({
       annotations: state.annotations.filter((ann) => ann.id !== id),

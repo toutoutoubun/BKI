@@ -1,4 +1,4 @@
-import { Plus, Trash2 } from 'lucide-react';
+import { Edit3, Plus, Trash2 } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useCodingStore } from '../../store/codingStore';
@@ -33,6 +33,7 @@ function QdaTab({ documents }: Props) {
   const updateCode = useCodingStore((state) => state.updateCode);
   const removeCode = useCodingStore((state) => state.removeCode);
   const addAnnotation = useCodingStore((state) => state.addAnnotation);
+  const updateAnnotation = useCodingStore((state) => state.updateAnnotation);
   const removeAnnotation = useCodingStore((state) => state.removeAnnotation);
 
   const [label, setLabel] = useState('');
@@ -44,6 +45,11 @@ function QdaTab({ documents }: Props) {
   const [end, setEnd] = useState(120);
   const [memo, setMemo] = useState('');
   const [selectedCodeIds, setSelectedCodeIds] = useState<string[]>(codes[0]?.id ? [codes[0].id] : []);
+  const [editingAnnotationId, setEditingAnnotationId] = useState<string | null>(null);
+  const [editStart, setEditStart] = useState(0);
+  const [editEnd, setEditEnd] = useState(0);
+  const [editMemo, setEditMemo] = useState('');
+  const [editCodeIds, setEditCodeIds] = useState<string[]>([]);
 
   const selectedDocument = useMemo(
     () => documents.find((document) => document.id === documentId) ?? documents[0],
@@ -65,6 +71,10 @@ function QdaTab({ documents }: Props) {
   useEffect(() => {
     if (parentId && !codes.some((code) => code.id === parentId)) setParentId('');
   }, [codes, parentId]);
+
+  useEffect(() => {
+    setEditCodeIds((current) => current.filter((codeId) => codes.some((code) => code.id === codeId)));
+  }, [codes]);
 
   const documentAnnotations = useMemo(
     () => annotations.filter((annotation) => annotation.documentId === selectedDocument?.id),
@@ -175,6 +185,43 @@ function QdaTab({ documents }: Props) {
       memo: memo.trim() || undefined,
     });
     setMemo('');
+  };
+
+  const openAnnotationEdit = (annotation: Annotation) => {
+    setEditingAnnotationId(annotation.id);
+    setEditStart(annotation.start);
+    setEditEnd(annotation.end);
+    setEditMemo(annotation.memo ?? '');
+    setEditCodeIds(annotation.codeIds.filter((codeId) => codes.some((code) => code.id === codeId)));
+  };
+
+  const cancelAnnotationEdit = () => {
+    setEditingAnnotationId(null);
+    setEditStart(0);
+    setEditEnd(0);
+    setEditMemo('');
+    setEditCodeIds([]);
+  };
+
+  const toggleEditCodeSelection = (codeId: string) => {
+    setEditCodeIds((current) => {
+      if (current.includes(codeId)) return current.filter((id) => id !== codeId);
+      return [...current, codeId];
+    });
+  };
+
+  const saveAnnotationEdit = (annotation: Annotation) => {
+    const document = documents.find((candidate) => candidate.id === annotation.documentId);
+    if (!document || editCodeIds.length === 0) return;
+    const { safeStart, safeEnd } = clampRange(editStart, editEnd, document.content.length);
+    if (safeStart === safeEnd) return;
+    updateAnnotation(annotation.id, {
+      start: safeStart,
+      end: safeEnd,
+      codeIds: editCodeIds,
+      memo: editMemo.trim() || undefined,
+    });
+    cancelAnnotationEdit();
   };
 
   const annotationCodes = (annotation: Annotation) =>
@@ -334,16 +381,82 @@ function QdaTab({ documents }: Props) {
           {documentAnnotations.length === 0 && <div className="empty-state">{t('qda.noAnnotations')}</div>}
           {documentAnnotations.map((annotation) => (
             <div className="result-row" key={annotation.id}>
-              <div className="toolbar">{annotationCodes(annotation)}</div>
-              <span className="muted">
-                {t('qda.range')}: {annotation.start}-{annotation.end}
-              </span>
-              <span>{selectedDocument?.content.slice(annotation.start, annotation.end) ?? ''}</span>
-              <span className="muted">{annotation.memo ?? t('common.none')}</span>
-              <button className="danger-button" type="button" onClick={() => removeAnnotation(annotation.id)}>
-                <Trash2 size={16} />
-                {t('common.delete')}
-              </button>
+              {editingAnnotationId === annotation.id ? (
+                <>
+                  <div className="field-grid">
+                    <label className="field">
+                      <span>{t('qda.start')}</span>
+                      <input className="text-input" type="number" value={editStart} onChange={(event) => setEditStart(Number(event.target.value))} />
+                    </label>
+                    <label className="field">
+                      <span>{t('qda.end')}</span>
+                      <input className="text-input" type="number" value={editEnd} onChange={(event) => setEditEnd(Number(event.target.value))} />
+                    </label>
+                  </div>
+
+                  <div className="field">
+                    <span>{t('qda.applyCodes')}</span>
+                    <div className="code-checkbox-grid">
+                      {codes.map((code) => (
+                        <label className="checkbox-row" key={code.id}>
+                          <input type="checkbox" checked={editCodeIds.includes(code.id)} onChange={() => toggleEditCodeSelection(code.id)} />
+                          <span className="color-chip small" style={{ background: code.color }} />
+                          <span>{code.label}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+
+                  <label className="field">
+                    <span>{t('qda.memo')}</span>
+                    <textarea className="text-area" value={editMemo} onChange={(event) => setEditMemo(event.target.value)} />
+                  </label>
+
+                  <div className="selection-preview">
+                    <strong>{t('qda.selectedText')}</strong>
+                    <p>{selectedDocument?.content.slice(editStart, editEnd) || t('qda.noSelection')}</p>
+                  </div>
+
+                  <div className="toolbar">
+                    <button className="primary-button" type="button" disabled={editCodeIds.length === 0 || editStart === editEnd} onClick={() => saveAnnotationEdit(annotation)}>
+                      {t('common.save')}
+                    </button>
+                    <button className="ghost-button" type="button" onClick={cancelAnnotationEdit}>
+                      {t('common.cancel')}
+                    </button>
+                    <button
+                      className="danger-button"
+                      type="button"
+                      onClick={() => {
+                        removeAnnotation(annotation.id);
+                        cancelAnnotationEdit();
+                      }}
+                    >
+                      <Trash2 size={16} />
+                      {t('common.delete')}
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="toolbar">{annotationCodes(annotation)}</div>
+                  <span className="muted">
+                    {t('qda.range')}: {annotation.start}-{annotation.end}
+                  </span>
+                  <span>{selectedDocument?.content.slice(annotation.start, annotation.end) ?? ''}</span>
+                  <span className="muted">{annotation.memo ?? t('common.none')}</span>
+                  <div className="toolbar">
+                    <button className="ghost-button" type="button" onClick={() => openAnnotationEdit(annotation)}>
+                      <Edit3 size={16} />
+                      {t('qda.editAnnotation')}
+                    </button>
+                    <button className="danger-button" type="button" onClick={() => removeAnnotation(annotation.id)}>
+                      <Trash2 size={16} />
+                      {t('common.delete')}
+                    </button>
+                  </div>
+                </>
+              )}
             </div>
           ))}
         </div>
