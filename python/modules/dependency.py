@@ -3,17 +3,17 @@ from __future__ import annotations
 import re
 from typing import Any
 
-from .common import documents, sentence_split
+from .common import documents, sentence_split, tokenize
 from .lang_loader import get_language_config, get_ner_pipeline
 
 
-def _fallback_sentence_triples(document: dict[str, Any], target: str) -> list[dict[str, Any]]:
+def _fallback_sentence_triples(document: dict[str, Any], target: str, language: str | None) -> list[dict[str, Any]]:
     metadata = document.get("metadata") or {}
     triples = []
     for sentence in sentence_split(str(document.get("content") or "")):
         if target.casefold() not in sentence.casefold():
             continue
-        words = re.findall(r"[\w'-]+", sentence, flags=re.UNICODE)
+        words = tokenize(sentence, lowercase=False, language=language) or re.findall(r"[\w'-]+", sentence, flags=re.UNICODE)
         target_index = next((index for index, word in enumerate(words) if target.casefold() in word.casefold()), 0)
         subject = words[target_index] if target_index < len(words) else target
         verb = next((word for word in words[target_index + 1 :] if word.casefold().endswith(("ed", "ing", "s"))), "")
@@ -63,7 +63,6 @@ def run(payload: dict[str, Any]) -> dict[str, Any]:
                     }
                 )
         else:
-            triples.extend(_fallback_sentence_triples(document, target))
+            triples.extend(_fallback_sentence_triples(document, target, language))
 
     return {"triples": triples, "fallback": pipeline is None}
-

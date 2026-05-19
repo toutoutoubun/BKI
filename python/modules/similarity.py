@@ -5,6 +5,7 @@ from collections import Counter
 from typing import Any
 
 from .common import documents, tokenize
+from .lang_loader import get_language_config, tokenizer_source
 
 
 def _cosine(left: Counter[str], right: Counter[str]) -> float:
@@ -17,8 +18,8 @@ def _cosine(left: Counter[str], right: Counter[str]) -> float:
     return numerator / (left_norm * right_norm)
 
 
-def _fallback(docs: list[dict[str, Any]], query_document_id: str | None, n_clusters: int) -> dict[str, Any]:
-    counters = [Counter(tokenize(str(document.get("content") or ""))) for document in docs]
+def _fallback(docs: list[dict[str, Any]], query_document_id: str | None, n_clusters: int, language: str | None) -> dict[str, Any]:
+    counters = [Counter(tokenize(str(document.get("content") or ""), language=language)) for document in docs]
     matrix = [[round(_cosine(left, right), 6) for right in counters] for left in counters]
     ranked = []
     if query_document_id:
@@ -38,6 +39,8 @@ def _fallback(docs: list[dict[str, Any]], query_document_id: str | None, n_clust
 
 def run(payload: dict[str, Any]) -> dict[str, Any]:
     docs = documents(payload)
+    language = payload.get("language") or "en"
+    lang_config = get_language_config(language)
     query_document_id = payload.get("query_document_id")
     n_clusters = int(payload.get("n_clusters") or 3)
     texts = [str(document.get("content") or "") for document in docs]
@@ -47,7 +50,12 @@ def run(payload: dict[str, Any]) -> dict[str, Any]:
         from sklearn.feature_extraction.text import TfidfVectorizer
         from sklearn.metrics.pairwise import cosine_similarity
 
-        vectorizer = TfidfVectorizer(max_features=5000)
+        vectorizer = TfidfVectorizer(
+            max_features=5000,
+            tokenizer=lambda text: tokenize(text, language=language),
+            token_pattern=None,
+            lowercase=False,
+        )
         matrix = vectorizer.fit_transform(texts)
         similarity_matrix = cosine_similarity(matrix).round(6).tolist()
         ranked = []
@@ -65,7 +73,8 @@ def run(payload: dict[str, Any]) -> dict[str, Any]:
         clusters: dict[str, list[Any]] = {}
         for label, document in zip(labels, docs, strict=False):
             clusters.setdefault(str(int(label)), []).append(document.get("id"))
-        return {"similarity_matrix": similarity_matrix, "ranked": ranked, "clusters": clusters}
+        return {"similarity_matrix": similarity_matrix, "ranked": ranked, "clusters": clusters, "tokenizer_source": tokenizer_source(lang_config)}
     except Exception:  # noqa: BLE001
-        return _fallback(docs, query_document_id, n_clusters)
-
+        result = _fallback(docs, query_document_id, n_clusters, language)
+        result["tokenizer_source"] = tokenizer_source(lang_config)
+        return result

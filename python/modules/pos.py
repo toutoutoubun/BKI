@@ -41,7 +41,7 @@ def run(payload: dict[str, Any]) -> dict[str, Any]:
                     distribution[period][tag] += 1
                     top_words[tag][token.text.casefold()] += 1
         else:
-            for token in tokenize(content):
+            for token in tokenize(content, language=language):
                 tag = _guess_pos(token)
                 if tag in pos_tags:
                     distribution[period][tag] += 1
@@ -52,4 +52,3 @@ def run(payload: dict[str, Any]) -> dict[str, Any]:
         "top_words": {tag: top_counter(counter) for tag, counter in top_words.items()},
         "fallback": pipeline is None,
     }
-

@@ -227,6 +227,7 @@
     "reloadLanguages": "言語アドオンを再読み込み",
     "builtInLanguage": "標準言語",
     "addonLanguage": "アドオン言語",
+    "tokenizer": "トークナイザー",
     "addonsDir": "アドオンフォルダ",
     "languageFallback": "標準言語情報を表示中",
     "licenseWarning": "ライセンス注意",

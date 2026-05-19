@@ -4,6 +4,7 @@ from collections import Counter, defaultdict
 from typing import Any
 
 from .common import documents, group_key, tokenize
+from .lang_loader import get_language_config, tokenizer_source
 
 
 def _topic_over_time(docs: list[dict[str, Any]], doc_topic: list[list[float]], group_by: str) -> dict[str, dict[str, float]]:
@@ -25,11 +26,11 @@ def _topic_over_time(docs: list[dict[str, Any]], doc_topic: list[list[float]], g
     }
 
 
-def _fallback_topics(docs: list[dict[str, Any]], n_topics: int, n_words: int, group_by: str) -> dict[str, Any]:
+def _fallback_topics(docs: list[dict[str, Any]], n_topics: int, n_words: int, group_by: str, language: str | None) -> dict[str, Any]:
     all_tokens: Counter[str] = Counter()
     doc_tokens: list[Counter[str]] = []
     for document in docs:
-        counter = Counter(tokenize(str(document.get("content") or "")))
+        counter = Counter(tokenize(str(document.get("content") or ""), language=language))
         doc_tokens.append(counter)
         all_tokens.update(counter)
 
@@ -65,6 +66,8 @@ def _fallback_topics(docs: list[dict[str, Any]], n_topics: int, n_words: int, gr
 
 def run(payload: dict[str, Any]) -> dict[str, Any]:
     docs = documents(payload)
+    language = payload.get("language") or "en"
+    lang_config = get_language_config(language)
     method = payload.get("method", "nmf")
     n_topics = int(payload.get("n_topics") or 5)
     n_words = int(payload.get("n_words") or 10)
@@ -75,7 +78,13 @@ def run(payload: dict[str, Any]) -> dict[str, Any]:
         from sklearn.decomposition import LatentDirichletAllocation, NMF
         from sklearn.feature_extraction.text import TfidfVectorizer
 
-        vectorizer = TfidfVectorizer(max_features=3000, stop_words="english")
+        vectorizer = TfidfVectorizer(
+            max_features=3000,
+            stop_words="english" if language == "en" else None,
+            tokenizer=lambda text: tokenize(text, language=language),
+            token_pattern=None,
+            lowercase=False,
+        )
         matrix = vectorizer.fit_transform(texts)
         model = LatentDirichletAllocation(n_components=n_topics, random_state=42) if method == "lda" else NMF(n_components=n_topics, random_state=42)
         doc_topic = model.fit_transform(matrix)
@@ -97,6 +106,14 @@ def run(payload: dict[str, Any]) -> dict[str, Any]:
             for index, row in enumerate(doc_topic)
         ]
         topic_over_time = _topic_over_time(docs, [row["topic_weights"] for row in doc_topic_matrix], group_by)
-        return {"topics": topics, "doc_topic_matrix": doc_topic_matrix, "topic_over_time": topic_over_time, "method": method}
+        return {
+            "topics": topics,
+            "doc_topic_matrix": doc_topic_matrix,
+            "topic_over_time": topic_over_time,
+            "method": method,
+            "tokenizer_source": tokenizer_source(lang_config),
+        }
     except Exception:  # noqa: BLE001
-        return _fallback_topics(docs, n_topics, n_words, group_by)
+        result = _fallback_topics(docs, n_topics, n_words, group_by, language)
+        result["tokenizer_source"] = tokenizer_source(lang_config)
+        return result

@@ -227,6 +227,7 @@
     "reloadLanguages": "Herlaai taal-byvoegings",
     "builtInLanguage": "Ingeboude taal",
     "addonLanguage": "Byvoegingstaal",
+    "tokenizer": "Tokeniseerder",
     "addonsDir": "Byvoegingsgids",
     "languageFallback": "Wys ingeboude taalmetadata",
     "licenseWarning": "Lisensiewaarskuwing",

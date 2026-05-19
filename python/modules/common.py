@@ -46,11 +46,26 @@ def compile_terms(terms: Iterable[str]) -> list[re.Pattern[str]]:
     return patterns
 
 
-def tokenize(text: str, lowercase: bool = True) -> list[str]:
-    tokens = re.findall(r"[\w'-]+", text, flags=re.UNICODE)
+def _default_tokens(text: str) -> list[str]:
+    return re.findall(r"[\w'-]+", text, flags=re.UNICODE)
+
+
+def tokenize(text: str, lowercase: bool = True, language: str | None = None) -> list[str]:
+    tokens: list[str]
+    if language:
+        try:
+            from .lang_loader import get_language_config, get_tokenizer
+
+            tokens = get_tokenizer(get_language_config(language))(text)
+        except Exception:  # noqa: BLE001 - tokenizer add-ons must not break analysis fallbacks.
+            tokens = _default_tokens(text)
+    else:
+        tokens = _default_tokens(text)
+
+    tokens = [str(token).strip() for token in tokens if str(token).strip() and re.search(r"\w", str(token), flags=re.UNICODE)]
     if lowercase:
-        return [token.casefold() for token in tokens if token.strip()]
-    return [token for token in tokens if token.strip()]
+        return [token.casefold() for token in tokens]
+    return tokens
 
 
 def sentence_split(text: str) -> list[str]:

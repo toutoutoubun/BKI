@@ -11,6 +11,8 @@ export interface LanguageInfo {
   code: string;
   name: string;
   built_in: boolean;
+  tokenizer?: string;
+  tokenizer_source?: string;
   capabilities: string[];
   license_warnings?: LanguageCreditWarning[];
 }
@@ -27,24 +29,32 @@ export const fallbackLanguages: LanguageInfo[] = [
     code: 'en',
     name: 'English',
     built_in: true,
+    tokenizer: 'nltk',
+    tokenizer_source: 'nltk',
     capabilities: ['frequency', 'kwic', 'sentiment', 'cooccurrence', 'tfidf', 'topic_model', 'similarity', 'lexical_stats', 'ner', 'pos', 'dependency'],
   },
   {
     code: 'ja',
     name: 'Japanese (日本語)',
     built_in: true,
+    tokenizer: 'sudachi',
+    tokenizer_source: 'sudachi',
     capabilities: ['frequency', 'kwic', 'sentiment', 'cooccurrence', 'tfidf', 'topic_model', 'similarity', 'lexical_stats', 'ner', 'pos'],
   },
   {
     code: 'fr',
     name: 'French (Français)',
     built_in: true,
+    tokenizer: 'spacy',
+    tokenizer_source: 'spacy',
     capabilities: ['frequency', 'kwic', 'sentiment', 'cooccurrence', 'tfidf', 'topic_model', 'similarity', 'lexical_stats', 'ner', 'pos', 'dependency'],
   },
   {
     code: 'af',
     name: 'Afrikaans',
     built_in: true,
+    tokenizer: 'whitespace',
+    tokenizer_source: 'whitespace',
     capabilities: ['frequency', 'kwic', 'sentiment', 'cooccurrence', 'tfidf', 'topic_model', 'similarity', 'lexical_stats', 'ner', 'pos'],
   },
 ];

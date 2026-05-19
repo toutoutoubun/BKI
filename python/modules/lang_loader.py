@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 from typing import Any, Callable
 
@@ -153,6 +154,7 @@ def load_installed_languages() -> dict[str, dict[str, Any]]:
             "ner_backend": provides.get("ner_backend", "spacy"),
             "pos_model": provides.get("pos_model"),
             "locale": provides.get("locale", code),
+            "tokenizer_rules_path": str(addon_dir / "tokenizer" / "rules.json"),
             "stopwords_path": str(addon_dir / "stopwords" / f"{code}.txt"),
             "lexicon_path": str(addon_dir / "lexicon" / f"{code}.tsv"),
             "fallback": manifest.get("fallback", {}),
@@ -175,6 +177,8 @@ def get_languages(payload: dict[str, Any] | None = None) -> dict[str, Any]:
                 "code": code,
                 "name": config.get("name", code),
                 "built_in": bool(config.get("built_in")),
+                "tokenizer": config.get("tokenizer", "whitespace"),
+                "tokenizer_source": tokenizer_source(config),
                 "capabilities": config.get("capabilities") or _capabilities(config),
                 "license_warnings": [
                     credit
@@ -210,7 +214,60 @@ def load_stopwords(language: str | None) -> set[str]:
     return stopwords
 
 
+def _regex_tokenizer(lang_config: dict[str, Any]) -> Callable[[str], list[str]] | None:
+    rules_path = lang_config.get("tokenizer_rules_path")
+    if not rules_path:
+        return None
+
+    path = Path(str(rules_path)).expanduser()
+    if not path.exists():
+        return None
+
+    try:
+        rules = json.loads(path.read_text(encoding="utf-8"))
+        if not isinstance(rules, dict):
+            return None
+        if rules.get("type") != "regex" or not rules.get("pattern"):
+            return None
+        pattern = re.compile(str(rules["pattern"]), flags=re.UNICODE)
+    except (OSError, json.JSONDecodeError, re.error):
+        return None
+
+    lowercase = bool(rules.get("lowercase", True))
+    try:
+        min_length = max(1, int(rules.get("min_length") or 1))
+    except (TypeError, ValueError):
+        min_length = 1
+    group = rules.get("group")
+
+    def tokenize(text: str) -> list[str]:
+        tokens: list[str] = []
+        for match in pattern.finditer(text):
+            try:
+                value = match.group(group) if group is not None else match.group(0)
+            except IndexError:
+                value = match.group(0)
+            token = str(value).strip()
+            if len(token) < min_length:
+                continue
+            tokens.append(token.casefold() if lowercase else token)
+        return tokens
+
+    return tokenize
+
+
+def tokenizer_source(lang_config: dict[str, Any]) -> str:
+    rules_path = lang_config.get("tokenizer_rules_path")
+    if rules_path and Path(str(rules_path)).expanduser().exists():
+        return "language_addon_rules"
+    return str(lang_config.get("tokenizer", "whitespace"))
+
+
 def get_tokenizer(lang_config: dict[str, Any]) -> Callable[[str], list[str]]:
+    custom_tokenizer = _regex_tokenizer(lang_config)
+    if custom_tokenizer:
+        return custom_tokenizer
+
     tokenizer_name = lang_config.get("tokenizer", "whitespace")
     if tokenizer_name == "sudachi":
         try:

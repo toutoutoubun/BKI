@@ -4,12 +4,13 @@ from collections import defaultdict
 from typing import Any
 
 from .common import documents, group_key, sentence_split, tokenize
+from .lang_loader import get_language_config, tokenizer_source
 
 
-def _stats_for_document(document: dict[str, Any]) -> dict[str, Any]:
+def _stats_for_document(document: dict[str, Any], language: str | None) -> dict[str, Any]:
     content = str(document.get("content") or "")
     metadata = document.get("metadata") or {}
-    tokens = tokenize(content)
+    tokens = tokenize(content, language=language)
     sentences = sentence_split(content)
     token_count = len(tokens)
     type_count = len(set(tokens))
@@ -28,7 +29,9 @@ def _stats_for_document(document: dict[str, Any]) -> dict[str, Any]:
 
 def run(payload: dict[str, Any]) -> dict[str, Any]:
     docs = documents(payload)
-    per_document = [_stats_for_document(document) for document in docs]
+    language = payload.get("language") or "en"
+    lang_config = get_language_config(language)
+    per_document = [_stats_for_document(document, language) for document in docs]
     grouped: dict[str, dict[str, float]] = defaultdict(lambda: defaultdict(float))
     counts: dict[str, int] = defaultdict(int)
 
@@ -49,4 +52,4 @@ def run(payload: dict[str, Any]) -> dict[str, Any]:
             "avg_word_len": round(values["avg_word_len"] / count, 3),
         }
 
-    return {"per_document": per_document, "over_time": over_time}
+    return {"per_document": per_document, "over_time": over_time, "tokenizer_source": tokenizer_source(lang_config)}

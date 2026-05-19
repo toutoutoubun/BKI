@@ -227,6 +227,7 @@
     "reloadLanguages": "Reload language add-ons",
     "builtInLanguage": "Built-in language",
     "addonLanguage": "Add-on language",
+    "tokenizer": "Tokenizer",
     "addonsDir": "Add-ons folder",
     "languageFallback": "Showing built-in language metadata",
     "licenseWarning": "License warning",

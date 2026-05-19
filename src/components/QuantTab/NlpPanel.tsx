@@ -380,6 +380,7 @@ function NlpPanel({ documents }: Props) {
         data: {
           resultCount: resultCount(command, response),
           fallback: Boolean((response as Record<string, unknown>)?.fallback),
+          tokenizerSource: (response as Record<string, unknown>)?.tokenizer_source,
         },
       });
     } catch (caught) {
@@ -537,6 +538,7 @@ function NlpPanel({ documents }: Props) {
                   {t('nlp.licenseWarning')}
                 </span>
               ))}
+              {selectedLanguage.tokenizer_source && <span className="muted">{t('nlp.tokenizer')}: {selectedLanguage.tokenizer_source}</span>}
               {languageCatalog.addons_dir && <span className="muted">{t('nlp.addonsDir')}: {languageCatalog.addons_dir}</span>}
             </div>
             <div className="capability-list" aria-label={t('nlp.availableCapabilities')}>
@@ -586,6 +588,12 @@ function NlpPanel({ documents }: Props) {
               <strong>{t('nlp.resultCount')}</strong>
               <span className="muted">{resultCount(command, result)}</span>
             </div>
+            {typeof (result as Record<string, unknown>).tokenizer_source === 'string' && (
+              <div className="result-row compact">
+                <strong>{t('nlp.tokenizer')}</strong>
+                <span className="muted">{(result as Record<string, unknown>).tokenizer_source as string}</span>
+              </div>
+            )}
             {renderPreview(command, result, documents, t)}
           </div>
         )}
