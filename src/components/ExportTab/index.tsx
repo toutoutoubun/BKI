@@ -1,5 +1,5 @@
 import { invoke } from '@tauri-apps/api/core';
-import { Database, Download, FileText, RefreshCw, Upload } from 'lucide-react';
+import { Archive, Database, Download, FileText, RefreshCw, Upload } from 'lucide-react';
 import { useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { buildBkiProject, parseBkiProject } from '../../lib/bkiProject';
@@ -37,8 +37,20 @@ type ExportResponse = {
   error?: string;
 };
 
+type BundleExportResponse = {
+  ok?: boolean;
+  path?: string;
+  files?: string[];
+  count?: number;
+  error?: string;
+};
+
 function truncate(value: string, limit = 240) {
   return value.length > limit ? `${value.slice(0, limit - 3)}...` : value;
+}
+
+function safeFilename(value: string) {
+  return value.replace(/[\\/:*?"<>|]+/g, '_').replace(/\s+/g, ' ').trim() || 'document';
 }
 
 function ExportTab({ documents }: Props) {
@@ -46,7 +58,9 @@ function ExportTab({ documents }: Props) {
   const projectInputRef = useRef<HTMLInputElement>(null);
   const [importMessage, setImportMessage] = useState<string>('');
   const [persistentMessage, setPersistentMessage] = useState<string>('');
+  const [bundleMessage, setBundleMessage] = useState<string>('');
   const [isPersisting, setIsPersisting] = useState(false);
+  const [isBundleExporting, setIsBundleExporting] = useState(false);
   const codes = useCodingStore((state) => state.codes);
   const annotations = useCodingStore((state) => state.annotations);
   const restoreCoding = useCodingStore((state) => state.restoreCoding);
@@ -112,6 +126,32 @@ function ExportTab({ documents }: Props) {
     if (rows.length) downloadText('bki-frequency.csv', toCsv(rows), 'text/csv;charset=utf-8');
   };
 
+  const codebookRows = () =>
+    codes.map((code) => ({
+      id: code.id,
+      label: code.label,
+      description: code.description ?? '',
+      parent: codes.find((candidate) => candidate.id === code.parentId)?.label ?? '',
+      color: code.color,
+      annotations: annotations.filter((annotation) => annotation.codeIds.includes(code.id)).length,
+    }));
+
+  const annotationRows = () =>
+    annotations.map((annotation) => {
+      const document = documents.find((candidate) => candidate.id === annotation.documentId);
+      return {
+        id: annotation.id,
+        document: document?.filename ?? annotation.documentId,
+        start: annotation.start,
+        end: annotation.end,
+        codes: annotation.codeIds
+          .map((codeId) => codes.find((code) => code.id === codeId)?.label ?? codeId)
+          .join(', '),
+        memo: annotation.memo ?? '',
+        excerpt: document ? truncate(document.content.slice(annotation.start, annotation.end), 180) : '',
+      };
+    });
+
   const buildReportPayload = () => {
     const codedDocumentIds = new Set(annotations.map((annotation) => annotation.documentId));
     return {
@@ -140,27 +180,11 @@ function ExportTab({ documents }: Props) {
         },
         {
           title: 'Codebook',
-          rows: codes.map((code) => ({
-            label: code.label,
-            description: code.description ?? '',
-            parent: codes.find((candidate) => candidate.id === code.parentId)?.label ?? '',
-            annotations: annotations.filter((annotation) => annotation.codeIds.includes(code.id)).length,
-          })),
+          rows: codebookRows().map(({ id: _id, color: _color, ...row }) => row),
         },
         {
           title: 'Annotations',
-          rows: annotations.slice(0, 100).map((annotation) => {
-            const document = documents.find((candidate) => candidate.id === annotation.documentId);
-            return {
-              document: document?.filename ?? annotation.documentId,
-              range: `${annotation.start}-${annotation.end}`,
-              codes: annotation.codeIds
-                .map((codeId) => codes.find((code) => code.id === codeId)?.label ?? codeId)
-                .join(', '),
-              memo: annotation.memo ?? '',
-              excerpt: document ? truncate(document.content.slice(annotation.start, annotation.end), 180) : '',
-            };
-          }),
+          rows: annotationRows().slice(0, 100).map(({ id: _id, start, end, ...row }) => ({ ...row, range: `${start}-${end}` })),
         },
         {
           title: 'Keyword Frequency',
@@ -227,6 +251,94 @@ function ExportTab({ documents }: Props) {
         title: 'Browser fallback report exported',
         detail: message,
       });
+    }
+  };
+
+  const buildBundleFiles = () => {
+    const project = buildCurrentProject();
+    const files = [
+      {
+        path: 'bki-project.bki',
+        content: JSON.stringify(project, null, 2),
+      },
+      {
+        path: 'bki-report.md',
+        content: browserReport(),
+      },
+      {
+        path: 'codebook.csv',
+        content: toCsv(codebookRows()),
+      },
+      {
+        path: 'annotations.csv',
+        content: toCsv(annotationRows()),
+      },
+      ...documents.map((document, index) => ({
+        path: `corpus/${String(index + 1).padStart(3, '0')}-${safeFilename(document.filename)}.txt`,
+        content: document.content,
+      })),
+    ];
+
+    if (frequencyResult?.table?.length) {
+      files.push({
+        path: 'frequency.csv',
+        content: toCsv(frequencyResult.table),
+      });
+    }
+
+    return files;
+  };
+
+  const exportStellarBundle = async () => {
+    const outputPath = stellarPath.trim();
+    if (!outputPath) return;
+    setIsBundleExporting(true);
+    setBundleMessage('');
+    addLog({
+      level: 'info',
+      stage: 'project.bundle',
+      title: 'Folder bundle export requested',
+      detail: outputPath,
+      data: {
+        documentCount: documents.length,
+        codeCount: codes.length,
+        annotationCount: annotations.length,
+        hasFrequencyResult: Boolean(frequencyResult?.table?.length),
+      },
+    });
+
+    try {
+      const response = await invoke<BundleExportResponse>('run_python', {
+        command: 'export',
+        payload: {
+          format: 'bundle',
+          output_dir: outputPath,
+          files: buildBundleFiles(),
+        },
+      });
+      if (response.error || !response.ok) throw new Error(response.error || 'Bundle export failed.');
+      setBundleMessage(t('export.bundleSuccess', { count: response.count ?? response.files?.length ?? 0, path: response.path ?? outputPath }));
+      addLog({
+        level: 'success',
+        stage: 'project.bundle',
+        title: 'Folder bundle exported',
+        detail: response.path ?? outputPath,
+        data: {
+          fileCount: response.count ?? response.files?.length ?? 0,
+          files: response.files,
+        },
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setBundleMessage(t('export.bundleError'));
+      addLog({
+        level: 'error',
+        stage: 'project.bundle',
+        title: 'Folder bundle export failed',
+        detail: message,
+      });
+    } finally {
+      setIsBundleExporting(false);
     }
   };
 
@@ -455,6 +567,17 @@ function ExportTab({ documents }: Props) {
             <span>{t('export.stellarHint')}</span>
             <input className="text-input" value={stellarPath} onChange={(event) => setStellarPath(event.target.value)} />
           </label>
+          <button
+            className="primary-button"
+            type="button"
+            disabled={isBundleExporting || !stellarPath.trim() || (documents.length === 0 && codes.length === 0 && annotations.length === 0)}
+            onClick={() => void exportStellarBundle()}
+          >
+            <Archive size={17} />
+            {t('export.exportBundle')}
+          </button>
+          <span className="muted">{t('export.bundleHint')}</span>
+          {bundleMessage && <span className="muted">{bundleMessage}</span>}
           {!frequencyResult && <div className="empty-state">{t('export.noResult')}</div>}
         </div>
       </section>

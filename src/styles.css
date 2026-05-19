@@ -430,8 +430,19 @@ button {
 }
 
 .code-row {
-  grid-template-columns: 28px minmax(0, 1fr) auto;
+  grid-template-columns: 28px minmax(0, 1fr) minmax(140px, 190px) auto;
   align-items: center;
+}
+
+.code-parent-control {
+  display: grid;
+  gap: 4px;
+}
+
+.code-parent-control span {
+  color: var(--muted);
+  font-size: 0.7rem;
+  font-weight: 600;
 }
 
 .color-chip {
@@ -877,6 +888,7 @@ button {
 
   .work-grid,
   .field-grid,
+  .code-row,
   .keyword-row,
   .nlp-grid,
   .guide-sections,

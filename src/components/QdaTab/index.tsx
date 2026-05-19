@@ -30,6 +30,7 @@ function QdaTab({ documents }: Props) {
   const codes = useCodingStore((state) => state.codes);
   const annotations = useCodingStore((state) => state.annotations);
   const addCode = useCodingStore((state) => state.addCode);
+  const updateCode = useCodingStore((state) => state.updateCode);
   const removeCode = useCodingStore((state) => state.removeCode);
   const addAnnotation = useCodingStore((state) => state.addAnnotation);
   const removeAnnotation = useCodingStore((state) => state.removeAnnotation);
@@ -37,6 +38,7 @@ function QdaTab({ documents }: Props) {
   const [label, setLabel] = useState('');
   const [description, setDescription] = useState('');
   const [color, setColor] = useState('#2f80ed');
+  const [parentId, setParentId] = useState('');
   const [documentId, setDocumentId] = useState(documents[0]?.id ?? '');
   const [start, setStart] = useState(0);
   const [end, setEnd] = useState(120);
@@ -59,6 +61,10 @@ function QdaTab({ documents }: Props) {
       return codes[0]?.id ? [codes[0].id] : [];
     });
   }, [codes]);
+
+  useEffect(() => {
+    if (parentId && !codes.some((code) => code.id === parentId)) setParentId('');
+  }, [codes, parentId]);
 
   const documentAnnotations = useMemo(
     () => annotations.filter((annotation) => annotation.documentId === selectedDocument?.id),
@@ -96,11 +102,49 @@ function QdaTab({ documents }: Props) {
     [annotations, codes, documents],
   );
 
+  const descendantIds = useMemo(() => {
+    const childrenByParent = new Map<string, string[]>();
+    codes.forEach((code) => {
+      if (!code.parentId) return;
+      childrenByParent.set(code.parentId, [...(childrenByParent.get(code.parentId) ?? []), code.id]);
+    });
+
+    const collect = (codeId: string, seen = new Set<string>()) => {
+      for (const childId of childrenByParent.get(codeId) ?? []) {
+        if (seen.has(childId)) continue;
+        seen.add(childId);
+        collect(childId, seen);
+      }
+      return seen;
+    };
+
+    return new Map(codes.map((code) => [code.id, collect(code.id)]));
+  }, [codes]);
+
+  const codeDepth = (codeId: string) => {
+    let depth = 0;
+    let current = codes.find((code) => code.id === codeId);
+    const seen = new Set<string>();
+    while (current?.parentId && !seen.has(current.parentId)) {
+      seen.add(current.parentId);
+      depth += 1;
+      current = codes.find((code) => code.id === current?.parentId);
+    }
+    return depth;
+  };
+
+  const parentOptions = (codeId?: string) =>
+    codes.filter((code) => {
+      if (!codeId) return true;
+      return code.id !== codeId && !descendantIds.get(codeId)?.has(code.id);
+    });
+
   const submitCode = () => {
     if (!label.trim()) return;
-    addCode({ label: label.trim(), description: description.trim() || undefined, color });
+    addCode({ label: label.trim(), description: description.trim() || undefined, color, parentId: parentId || undefined });
     setLabel('');
     setDescription('');
+    setParentId('');
   };
 
   const updateSelectionFromTextarea = () => {
@@ -169,15 +213,43 @@ function QdaTab({ documents }: Props) {
             <span>{t('qda.description')}</span>
             <input className="text-input" value={description} onChange={(event) => setDescription(event.target.value)} />
           </label>
+          <label className="field">
+            <span>{t('qda.parentCode')}</span>
+            <select className="select-input" value={parentId} onChange={(event) => setParentId(event.target.value)}>
+              <option value="">{t('qda.noParent')}</option>
+              {parentOptions().map((code) => (
+                <option key={code.id} value={code.id}>
+                  {'- '.repeat(codeDepth(code.id))}
+                  {code.label}
+                </option>
+              ))}
+            </select>
+          </label>
 
           {codes.length === 0 && <div className="empty-state">{t('qda.noCodes')}</div>}
           {codes.map((code) => (
-            <div className="code-row" key={code.id}>
+            <div className="code-row" key={code.id} style={{ marginLeft: `${Math.min(codeDepth(code.id), 4) * 14}px` }}>
               <span className="color-chip" style={{ background: code.color }} />
               <div>
                 <strong>{code.label}</strong>
                 <div className="muted">{code.description ?? t('common.none')}</div>
               </div>
+              <label className="code-parent-control">
+                <span>{t('qda.parentCode')}</span>
+                <select
+                  className="select-input"
+                  value={code.parentId ?? ''}
+                  onChange={(event) => updateCode(code.id, { parentId: event.target.value || undefined })}
+                >
+                  <option value="">{t('qda.noParent')}</option>
+                  {parentOptions(code.id).map((candidate) => (
+                    <option key={candidate.id} value={candidate.id}>
+                      {'- '.repeat(codeDepth(candidate.id))}
+                      {candidate.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
               <button className="icon-button" type="button" title={t('common.delete')} onClick={() => removeCode(code.id)}>
                 <Trash2 size={16} />
               </button>

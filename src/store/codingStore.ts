@@ -50,7 +50,9 @@ export const useCodingStore = create<CodingStore>((set) => ({
     })),
   removeCode: (id) =>
     set((state) => ({
-      codes: state.codes.filter((code) => code.id !== id),
+      codes: state.codes
+        .filter((code) => code.id !== id)
+        .map((code) => (code.parentId === id ? { ...code, parentId: undefined } : code)),
       annotations: state.annotations.map((ann) => ({
         ...ann,
         codeIds: ann.codeIds.filter((codeId) => codeId !== id),
