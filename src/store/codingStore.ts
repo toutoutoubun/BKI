@@ -44,10 +44,21 @@ export const useCodingStore = create<CodingStore>((set) => ({
       },
     });
   },
-  updateCode: (id, patch) =>
+  updateCode: (id, patch) => {
     set((state) => ({
       codes: state.codes.map((code) => (code.id === id ? { ...code, ...patch } : code)),
-    })),
+    }));
+    useProcessStore.getState().addLog({
+      level: 'success',
+      stage: 'qda.code',
+      title: 'Code updated',
+      detail: patch.label ? `${patch.label} was updated.` : `Updated code ${id}.`,
+      data: {
+        codeId: id,
+        patch,
+      },
+    });
+  },
   removeCode: (id) =>
     set((state) => ({
       codes: state.codes

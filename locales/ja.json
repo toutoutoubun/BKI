@@ -70,6 +70,7 @@
     "title": "質的分析",
     "codes": "コード",
     "addCode": "コードを追加",
+    "editCode": "コードを編集",
     "annotations": "注釈",
     "editAnnotation": "注釈を編集",
     "codeLabel": "ラベル",

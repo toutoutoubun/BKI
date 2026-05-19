@@ -2,7 +2,7 @@ import { Edit3, Plus, Trash2 } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useCodingStore } from '../../store/codingStore';
-import type { Annotation, CorpusDocument } from '../../types';
+import type { Annotation, Code, CorpusDocument } from '../../types';
 
 interface Props {
   documents: CorpusDocument[];
@@ -45,6 +45,11 @@ function QdaTab({ documents }: Props) {
   const [end, setEnd] = useState(120);
   const [memo, setMemo] = useState('');
   const [selectedCodeIds, setSelectedCodeIds] = useState<string[]>(codes[0]?.id ? [codes[0].id] : []);
+  const [editingCodeId, setEditingCodeId] = useState<string | null>(null);
+  const [editCodeLabel, setEditCodeLabel] = useState('');
+  const [editCodeDescription, setEditCodeDescription] = useState('');
+  const [editCodeColor, setEditCodeColor] = useState('#2f80ed');
+  const [editCodeParentId, setEditCodeParentId] = useState('');
   const [editingAnnotationId, setEditingAnnotationId] = useState<string | null>(null);
   const [editStart, setEditStart] = useState(0);
   const [editEnd, setEditEnd] = useState(0);
@@ -71,6 +76,11 @@ function QdaTab({ documents }: Props) {
   useEffect(() => {
     if (parentId && !codes.some((code) => code.id === parentId)) setParentId('');
   }, [codes, parentId]);
+
+  useEffect(() => {
+    if (editingCodeId && !codes.some((code) => code.id === editingCodeId)) setEditingCodeId(null);
+    if (editCodeParentId && !codes.some((code) => code.id === editCodeParentId)) setEditCodeParentId('');
+  }, [codes, editCodeParentId, editingCodeId]);
 
   useEffect(() => {
     setEditCodeIds((current) => current.filter((codeId) => codes.some((code) => code.id === codeId)));
@@ -155,6 +165,33 @@ function QdaTab({ documents }: Props) {
     setLabel('');
     setDescription('');
     setParentId('');
+  };
+
+  const openCodeEdit = (code: Code) => {
+    setEditingCodeId(code.id);
+    setEditCodeLabel(code.label);
+    setEditCodeDescription(code.description ?? '');
+    setEditCodeColor(code.color);
+    setEditCodeParentId(code.parentId ?? '');
+  };
+
+  const cancelCodeEdit = () => {
+    setEditingCodeId(null);
+    setEditCodeLabel('');
+    setEditCodeDescription('');
+    setEditCodeColor('#2f80ed');
+    setEditCodeParentId('');
+  };
+
+  const saveCodeEdit = (code: Code) => {
+    if (!editCodeLabel.trim()) return;
+    updateCode(code.id, {
+      label: editCodeLabel.trim(),
+      description: editCodeDescription.trim() || undefined,
+      color: editCodeColor,
+      parentId: editCodeParentId || undefined,
+    });
+    cancelCodeEdit();
   };
 
   const updateSelectionFromTextarea = () => {
@@ -275,31 +312,92 @@ function QdaTab({ documents }: Props) {
 
           {codes.length === 0 && <div className="empty-state">{t('qda.noCodes')}</div>}
           {codes.map((code) => (
-            <div className="code-row" key={code.id} style={{ marginLeft: `${Math.min(codeDepth(code.id), 4) * 14}px` }}>
-              <span className="color-chip" style={{ background: code.color }} />
-              <div>
-                <strong>{code.label}</strong>
-                <div className="muted">{code.description ?? t('common.none')}</div>
-              </div>
-              <label className="code-parent-control">
-                <span>{t('qda.parentCode')}</span>
-                <select
-                  className="select-input"
-                  value={code.parentId ?? ''}
-                  onChange={(event) => updateCode(code.id, { parentId: event.target.value || undefined })}
-                >
-                  <option value="">{t('qda.noParent')}</option>
-                  {parentOptions(code.id).map((candidate) => (
-                    <option key={candidate.id} value={candidate.id}>
-                      {'- '.repeat(codeDepth(candidate.id))}
-                      {candidate.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <button className="icon-button" type="button" title={t('common.delete')} onClick={() => removeCode(code.id)}>
-                <Trash2 size={16} />
-              </button>
+            <div
+              className={editingCodeId === code.id ? 'code-row code-row-editing' : 'code-row'}
+              key={code.id}
+              style={{ marginLeft: `${Math.min(codeDepth(code.id), 4) * 14}px` }}
+            >
+              {editingCodeId === code.id ? (
+                <>
+                  <div className="field-grid">
+                    <label className="field">
+                      <span>{t('qda.codeLabel')}</span>
+                      <input className="text-input" value={editCodeLabel} onChange={(event) => setEditCodeLabel(event.target.value)} />
+                    </label>
+                    <label className="field">
+                      <span>{t('qda.color')}</span>
+                      <input className="text-input" type="color" value={editCodeColor} onChange={(event) => setEditCodeColor(event.target.value)} />
+                    </label>
+                  </div>
+                  <label className="field">
+                    <span>{t('qda.description')}</span>
+                    <input className="text-input" value={editCodeDescription} onChange={(event) => setEditCodeDescription(event.target.value)} />
+                  </label>
+                  <label className="field">
+                    <span>{t('qda.parentCode')}</span>
+                    <select className="select-input" value={editCodeParentId} onChange={(event) => setEditCodeParentId(event.target.value)}>
+                      <option value="">{t('qda.noParent')}</option>
+                      {parentOptions(code.id).map((candidate) => (
+                        <option key={candidate.id} value={candidate.id}>
+                          {'- '.repeat(codeDepth(candidate.id))}
+                          {candidate.label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <div className="toolbar">
+                    <button className="primary-button" type="button" disabled={!editCodeLabel.trim()} onClick={() => saveCodeEdit(code)}>
+                      {t('common.save')}
+                    </button>
+                    <button className="ghost-button" type="button" onClick={cancelCodeEdit}>
+                      {t('common.cancel')}
+                    </button>
+                    <button
+                      className="danger-button"
+                      type="button"
+                      onClick={() => {
+                        removeCode(code.id);
+                        cancelCodeEdit();
+                      }}
+                    >
+                      <Trash2 size={16} />
+                      {t('common.delete')}
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <span className="color-chip" style={{ background: code.color }} />
+                  <div>
+                    <strong>{code.label}</strong>
+                    <div className="muted">{code.description ?? t('common.none')}</div>
+                  </div>
+                  <label className="code-parent-control">
+                    <span>{t('qda.parentCode')}</span>
+                    <select
+                      className="select-input"
+                      value={code.parentId ?? ''}
+                      onChange={(event) => updateCode(code.id, { parentId: event.target.value || undefined })}
+                    >
+                      <option value="">{t('qda.noParent')}</option>
+                      {parentOptions(code.id).map((candidate) => (
+                        <option key={candidate.id} value={candidate.id}>
+                          {'- '.repeat(codeDepth(candidate.id))}
+                          {candidate.label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <div className="toolbar">
+                    <button className="icon-button" type="button" title={t('qda.editCode')} onClick={() => openCodeEdit(code)}>
+                      <Edit3 size={16} />
+                    </button>
+                    <button className="icon-button" type="button" title={t('common.delete')} onClick={() => removeCode(code.id)}>
+                      <Trash2 size={16} />
+                    </button>
+                  </div>
+                </>
+              )}
             </div>
           ))}
         </div>

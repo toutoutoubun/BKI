@@ -434,6 +434,11 @@ button {
   align-items: center;
 }
 
+.code-row-editing {
+  grid-template-columns: 1fr;
+  align-items: stretch;
+}
+
 .code-parent-control {
   display: grid;
   gap: 4px;
