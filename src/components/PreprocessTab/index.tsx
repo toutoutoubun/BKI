@@ -36,6 +36,15 @@ function PreprocessTab({ documents }: Props) {
   }, [annotations, documents]);
 
   const toggle = (key: keyof typeof options) => setOptions((current) => ({ ...current, [key]: !current[key] }));
+  const formatStopwordSource = (source: string) => {
+    const labels: Record<string, string> = {
+      language_addon: t('preprocess.stopwordSourceAddon'),
+      built_in: t('preprocess.stopwordSourceBuiltIn'),
+      browser_builtin: t('preprocess.stopwordSourceBrowser'),
+      disabled: t('preprocess.stopwordSourceDisabled'),
+    };
+    return labels[source] ?? source;
+  };
 
   const run = async () => {
     const startedAt = performance.now();
@@ -82,6 +91,7 @@ function PreprocessTab({ documents }: Props) {
           originalCharacters: response.stats.original_characters,
           processedCharacters: response.stats.processed_characters,
           removedStopwords: response.stats.removed_stopwords,
+          stopwordSources: response.stats.stopwords_sources,
           stemmedTerms: response.stats.stemmed_terms,
           affectedAnnotationCount,
         },
@@ -119,6 +129,7 @@ function PreprocessTab({ documents }: Props) {
               </label>
             ))}
           </div>
+          {options.stopwords && <div className="result-row compact"><span className="muted">{t('preprocess.stopwordsAddonHint')}</span></div>}
           {affectedAnnotationCount > 0 && (
             <div className="result-row compact warning-row">
               <strong>
@@ -167,6 +178,12 @@ function PreprocessTab({ documents }: Props) {
                 <span className="muted">{t('preprocess.removedStopwords')}</span>
                 <strong>{result.stats.removed_stopwords.toLocaleString()}</strong>
               </div>
+              {result.stats.stopwords_sources && result.stats.stopwords_sources.length > 0 && (
+                <div className="result-row">
+                  <span className="muted">{t('preprocess.stopwordSource')}</span>
+                  <strong>{result.stats.stopwords_sources.map(formatStopwordSource).join(', ')}</strong>
+                </div>
+              )}
               <div className="result-row">
                 <span className="muted">{t('preprocess.stemmedTerms')}</span>
                 <strong>{result.stats.stemmed_terms.toLocaleString()}</strong>

@@ -71,6 +71,7 @@ export interface PreprocessDocumentStats {
   processed_characters: number;
   changed: boolean;
   removed_stopwords: number;
+  stopwords_source?: string;
   stemmed_terms: number;
   stemming_fallback: boolean;
 }
@@ -82,6 +83,7 @@ export interface PreprocessStats {
   processed_characters: number;
   character_delta: number;
   removed_stopwords: number;
+  stopwords_sources?: string[];
   stemmed_terms: number;
   stemming_fallback: boolean;
   per_document: PreprocessDocumentStats[];

@@ -102,6 +102,7 @@ function browserPreprocess(documents: CorpusDocument[], options: PreprocessOptio
       processed_characters: content.length,
       changed: content !== original,
       removed_stopwords: removedStopwords,
+      stopwords_source: options.stopwords ? 'browser_builtin' : 'disabled',
       stemmed_terms: stemmedTerms,
       stemming_fallback: options.stemming,
     });
@@ -122,6 +123,7 @@ function browserPreprocess(documents: CorpusDocument[], options: PreprocessOptio
       processed_characters: processedCharacters,
       character_delta: processedCharacters - originalCharacters,
       removed_stopwords: perDocument.reduce((sum, item) => sum + item.removed_stopwords, 0),
+      stopwords_sources: Array.from(new Set(perDocument.map((item) => item.stopwords_source ?? 'disabled'))).sort(),
       stemmed_terms: perDocument.reduce((sum, item) => sum + item.stemmed_terms, 0),
       stemming_fallback: options.stemming,
       per_document: perDocument,

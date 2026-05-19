@@ -191,6 +191,25 @@ def get_language_config(language: str | None) -> dict[str, Any]:
     return langs.get(language or "en") or langs["en"]
 
 
+def load_stopwords(language: str | None) -> set[str]:
+    lang_config = get_language_config(language)
+    stopwords_path = lang_config.get("stopwords_path")
+    if not stopwords_path:
+        return set()
+
+    path = Path(str(stopwords_path)).expanduser()
+    if not path.exists():
+        return set()
+
+    stopwords: set[str] = set()
+    for line in path.read_text(encoding="utf-8").splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#"):
+            continue
+        stopwords.add(stripped.casefold())
+    return stopwords
+
+
 def get_tokenizer(lang_config: dict[str, Any]) -> Callable[[str], list[str]]:
     tokenizer_name = lang_config.get("tokenizer", "whitespace")
     if tokenizer_name == "sudachi":

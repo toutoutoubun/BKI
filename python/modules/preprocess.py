@@ -4,6 +4,8 @@ import re
 import unicodedata
 from typing import Any
 
+from .lang_loader import load_stopwords
+
 LATIN_STOPWORDS: dict[str, set[str]] = {
     "en": {
         "a",
@@ -111,14 +113,16 @@ def _clean_punctuation(content: str) -> str:
     return content
 
 
-def _remove_stopwords(content: str, language: str) -> tuple[str, int]:
-    stopwords = LATIN_STOPWORDS.get(language, LATIN_STOPWORDS["en"])
+def _remove_stopwords(content: str, language: str) -> tuple[str, int, str]:
+    addon_stopwords = load_stopwords(language)
+    stopwords = addon_stopwords or LATIN_STOPWORDS.get(language, LATIN_STOPWORDS["en"])
+    source = "language_addon" if addon_stopwords else "built_in"
     removed = 0
 
     def replace(match: re.Match[str]) -> str:
         nonlocal removed
         token = match.group(0)
-        if token.lower() in stopwords:
+        if token.casefold() in stopwords:
             removed += 1
             return ""
         return token
@@ -126,7 +130,7 @@ def _remove_stopwords(content: str, language: str) -> tuple[str, int]:
     cleaned = WORD_RE.sub(replace, content)
     cleaned = SPACE_RE.sub(" ", cleaned)
     cleaned = re.sub(r" +\n", "\n", cleaned)
-    return cleaned.strip(), removed
+    return cleaned.strip(), removed, source
 
 
 def _stem_token(token: str) -> str:
@@ -170,6 +174,7 @@ def _process_document(document: dict[str, Any], options: dict[str, bool]) -> tup
     original = str(document.get("content") or "")
     content = original
     removed_stopwords = 0
+    stopwords_source = "disabled"
     stemmed_terms = 0
     stemming_fallback = False
 
@@ -178,7 +183,7 @@ def _process_document(document: dict[str, Any], options: dict[str, bool]) -> tup
     if options.get("lowercase"):
         content = content.lower()
     if options.get("stopwords"):
-        content, removed_stopwords = _remove_stopwords(content, language)
+        content, removed_stopwords, stopwords_source = _remove_stopwords(content, language)
     if options.get("stemming"):
         content, stemmed_terms, stemming_fallback = _stem(content, language)
     if options.get("punctuation"):
@@ -197,6 +202,7 @@ def _process_document(document: dict[str, Any], options: dict[str, bool]) -> tup
         "processed_characters": len(content),
         "changed": content != original,
         "removed_stopwords": removed_stopwords,
+        "stopwords_source": stopwords_source,
         "stemmed_terms": stemmed_terms,
         "stemming_fallback": stemming_fallback,
     }
@@ -223,6 +229,7 @@ def run(payload: dict[str, Any]) -> dict[str, Any]:
     processed_characters = sum(item["processed_characters"] for item in per_document)
     removed_stopwords = sum(item["removed_stopwords"] for item in per_document)
     stemmed_terms = sum(item["stemmed_terms"] for item in per_document)
+    stopwords_sources = sorted({item["stopwords_source"] for item in per_document})
 
     return {
         "documents": processed_documents,
@@ -233,6 +240,7 @@ def run(payload: dict[str, Any]) -> dict[str, Any]:
             "processed_characters": processed_characters,
             "character_delta": processed_characters - original_characters,
             "removed_stopwords": removed_stopwords,
+            "stopwords_sources": stopwords_sources,
             "stemmed_terms": stemmed_terms,
             "stemming_fallback": any(item["stemming_fallback"] for item in per_document),
             "per_document": per_document,
