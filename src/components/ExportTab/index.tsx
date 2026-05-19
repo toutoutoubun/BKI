@@ -1,4 +1,5 @@
-import { Database, Download, RefreshCw, Upload } from 'lucide-react';
+import { invoke } from '@tauri-apps/api/core';
+import { Database, Download, FileText, RefreshCw, Upload } from 'lucide-react';
 import { useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { buildBkiProject, parseBkiProject } from '../../lib/bkiProject';
@@ -28,6 +29,16 @@ function toCsv(rows: Array<Record<string, string | number>>) {
   const headers = Object.keys(rows[0]);
   const escape = (value: string | number) => `"${String(value).replaceAll('"', '""')}"`;
   return [headers.join(','), ...rows.map((row) => headers.map((header) => escape(row[header] ?? '')).join(','))].join('\n');
+}
+
+type ExportResponse = {
+  content?: string;
+  mime?: string;
+  error?: string;
+};
+
+function truncate(value: string, limit = 240) {
+  return value.length > limit ? `${value.slice(0, limit - 3)}...` : value;
 }
 
 function ExportTab({ documents }: Props) {
@@ -99,6 +110,124 @@ function ExportTab({ documents }: Props) {
   const exportCsv = () => {
     const rows = frequencyResult?.table ?? [];
     if (rows.length) downloadText('bki-frequency.csv', toCsv(rows), 'text/csv;charset=utf-8');
+  };
+
+  const buildReportPayload = () => {
+    const codedDocumentIds = new Set(annotations.map((annotation) => annotation.documentId));
+    return {
+      format: 'markdown',
+      title: 'BKI Research Report',
+      summary: {
+        Documents: documents.length,
+        Codes: codes.length,
+        Annotations: annotations.length,
+        'Keyword groups': keywordGroups.length,
+        'Frequency grouping': groupBy,
+      },
+      sections: [
+        {
+          title: 'Corpus',
+          rows: documents.map((document) => ({
+            filename: document.filename,
+            language: document.metadata.language ?? '',
+            date: document.metadata.date ?? '',
+            author: document.metadata.author ?? '',
+            category: document.metadata.category ?? '',
+            tags: document.metadata.tags.join(', '),
+            characters: document.content.length,
+            coded: codedDocumentIds.has(document.id) ? 'yes' : 'no',
+          })),
+        },
+        {
+          title: 'Codebook',
+          rows: codes.map((code) => ({
+            label: code.label,
+            description: code.description ?? '',
+            parent: codes.find((candidate) => candidate.id === code.parentId)?.label ?? '',
+            annotations: annotations.filter((annotation) => annotation.codeIds.includes(code.id)).length,
+          })),
+        },
+        {
+          title: 'Annotations',
+          rows: annotations.slice(0, 100).map((annotation) => {
+            const document = documents.find((candidate) => candidate.id === annotation.documentId);
+            return {
+              document: document?.filename ?? annotation.documentId,
+              range: `${annotation.start}-${annotation.end}`,
+              codes: annotation.codeIds
+                .map((codeId) => codes.find((code) => code.id === codeId)?.label ?? codeId)
+                .join(', '),
+              memo: annotation.memo ?? '',
+              excerpt: document ? truncate(document.content.slice(annotation.start, annotation.end), 180) : '',
+            };
+          }),
+        },
+        {
+          title: 'Keyword Frequency',
+          rows: frequencyResult?.table ?? [],
+        },
+      ],
+    };
+  };
+
+  const browserReport = () => {
+    const payload = buildReportPayload();
+    const lines = [`# ${payload.title}`, '', '## Summary', ''];
+    Object.entries(payload.summary).forEach(([key, value]) => lines.push(`- **${key}**: ${value}`));
+    payload.sections.forEach((section) => {
+      lines.push('', `## ${section.title}`, '');
+      if (!section.rows.length) {
+        lines.push('_No data._');
+        return;
+      }
+      const headers = Object.keys(section.rows[0]);
+      lines.push(`| ${headers.join(' | ')} |`);
+      lines.push(`| ${headers.map(() => '---').join(' | ')} |`);
+      section.rows.forEach((row) => {
+        lines.push(`| ${headers.map((header) => String(row[header] ?? '').replaceAll('|', '\\|').replaceAll('\n', '<br>')).join(' | ')} |`);
+      });
+    });
+    return `${lines.join('\n')}\n`;
+  };
+
+  const exportMarkdownReport = async () => {
+    const startedAt = performance.now();
+    addLog({
+      level: 'info',
+      stage: 'project.report',
+      title: 'Markdown report export requested',
+      detail: 'Preparing corpus, coding, and frequency summaries for report generation.',
+      data: {
+        documentCount: documents.length,
+        codeCount: codes.length,
+        annotationCount: annotations.length,
+        hasFrequencyResult: Boolean(frequencyResult?.table?.length),
+      },
+    });
+
+    try {
+      const response = await invoke<ExportResponse>('run_python', {
+        command: 'export',
+        payload: buildReportPayload(),
+      });
+      if (response.error || !response.content) throw new Error(response.error || 'Python exporter returned no content.');
+      downloadText('bki-report.md', response.content, response.mime ?? 'text/markdown;charset=utf-8');
+      addLog({
+        level: 'success',
+        stage: 'project.report',
+        title: 'Markdown report exported',
+        detail: `Python exporter completed in ${Math.round(performance.now() - startedAt)}ms.`,
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      downloadText('bki-report.md', browserReport(), 'text/markdown;charset=utf-8');
+      addLog({
+        level: 'warning',
+        stage: 'project.report',
+        title: 'Browser fallback report exported',
+        detail: message,
+      });
+    }
   };
 
   const importProject = async (file: File) => {
@@ -304,6 +433,14 @@ function ExportTab({ documents }: Props) {
             <button className="ghost-button" type="button" disabled={!frequencyResult?.table?.length} onClick={exportCsv}>
               <Download size={17} />
               {t('export.downloadCsv')}
+            </button>
+          </div>
+          <div className="result-row">
+            <strong>{t('export.markdownReport')}</strong>
+            <span className="muted">{t('export.markdownReportHint')}</span>
+            <button className="ghost-button" type="button" disabled={documents.length === 0 && codes.length === 0 && annotations.length === 0} onClick={() => void exportMarkdownReport()}>
+              <FileText size={17} />
+              {t('export.downloadReport')}
             </button>
           </div>
         </div>
