@@ -197,6 +197,7 @@
     "fieldCategory": "カテゴリ",
     "clusterCount": "クラスタ数",
     "cluster": "クラスタ",
+    "topicTrend": "トピック推移",
     "noResult": "NLP結果がありません",
     "pythonRequired": "Tauri経由のPythonサイドカーで実行します",
     "reloadLanguages": "言語アドオンを再読み込み",

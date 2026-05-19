@@ -49,12 +49,27 @@ function renderPreview(command: NlpCommand, result: unknown, documents: CorpusDo
     ));
   }
   if (command === 'topic_model') {
-    return (data.topics ?? []).slice(0, 6).map((topic: any) => (
-      <div className="result-row compact" key={topic.id}>
-        <strong>{t('nlp.topic')} {topic.id + 1}</strong>
-        <span className="muted">{(topic.top_words ?? []).map((word: any) => word.word).join(', ')}</span>
-      </div>
-    ));
+    return (
+      <>
+        {(data.topics ?? []).slice(0, 6).map((topic: any) => (
+          <div className="result-row compact" key={topic.id}>
+            <strong>{t('nlp.topic')} {topic.id + 1}</strong>
+            <span className="muted">{(topic.top_words ?? []).map((word: any) => word.word).join(', ')}</span>
+          </div>
+        ))}
+        {Object.entries(data.topic_over_time ?? {}).slice(0, 6).map(([topicId, periods]) => (
+          <div className="result-row compact" key={`topic-trend-${topicId}`}>
+            <strong>{t('nlp.topicTrend')} {Number(topicId) + 1}</strong>
+            <span className="muted">
+              {Object.entries(periods as Record<string, number>)
+                .slice(0, 8)
+                .map(([period, score]) => `${period}: ${Number(score).toFixed(3)}`)
+                .join(' · ')}
+            </span>
+          </div>
+        ))}
+      </>
+    );
   }
   if (command === 'similarity') {
     return (

@@ -6,6 +6,25 @@ from typing import Any
 from .common import documents, group_key, tokenize
 
 
+def _topic_over_time(docs: list[dict[str, Any]], doc_topic: list[list[float]], group_by: str) -> dict[str, dict[str, float]]:
+    totals: dict[str, dict[str, float]] = defaultdict(lambda: defaultdict(float))
+    counts: dict[str, int] = defaultdict(int)
+
+    for document, weights in zip(docs, doc_topic, strict=False):
+        period = group_key(document, group_by)
+        counts[period] += 1
+        for topic_id, weight in enumerate(weights):
+            totals[str(topic_id)][period] += float(weight)
+
+    return {
+        topic_id: {
+            period: round(total / max(1, counts[period]), 6)
+            for period, total in sorted(periods.items())
+        }
+        for topic_id, periods in totals.items()
+    }
+
+
 def _fallback_topics(docs: list[dict[str, Any]], n_topics: int, n_words: int, group_by: str) -> dict[str, Any]:
     all_tokens: Counter[str] = Counter()
     doc_tokens: list[Counter[str]] = []
@@ -27,22 +46,19 @@ def _fallback_topics(docs: list[dict[str, Any]], n_topics: int, n_words: int, gr
         )
 
     matrix = []
-    over_time: dict[str, dict[str, float]] = defaultdict(lambda: defaultdict(float))
     topic_word_sets = [set(item["word"] for item in topic["top_words"]) for topic in topics]
     for document, counter in zip(docs, doc_tokens, strict=False):
         weights = []
         total = max(1, sum(counter.values()))
-        period = group_key(document, group_by)
         for topic_id, words in enumerate(topic_word_sets):
             weight = sum(counter[word] for word in words) / total
             weights.append(round(weight, 6))
-            over_time[str(topic_id)][period] += weight
         matrix.append({"document_id": document.get("id"), "topic_weights": weights})
 
     return {
         "topics": topics,
         "doc_topic_matrix": matrix,
-        "topic_over_time": {topic: dict(periods) for topic, periods in over_time.items()},
+        "topic_over_time": _topic_over_time(docs, [row["topic_weights"] for row in matrix], group_by),
         "fallback": True,
     }
 
@@ -80,7 +96,7 @@ def run(payload: dict[str, Any]) -> dict[str, Any]:
             {"document_id": docs[index].get("id"), "topic_weights": [round(float(weight), 6) for weight in row]}
             for index, row in enumerate(doc_topic)
         ]
-        return {"topics": topics, "doc_topic_matrix": doc_topic_matrix, "topic_over_time": {}, "method": method}
+        topic_over_time = _topic_over_time(docs, [row["topic_weights"] for row in doc_topic_matrix], group_by)
+        return {"topics": topics, "doc_topic_matrix": doc_topic_matrix, "topic_over_time": topic_over_time, "method": method}
     except Exception:  # noqa: BLE001
         return _fallback_topics(docs, n_topics, n_words, group_by)
-

@@ -197,6 +197,7 @@
     "fieldCategory": "Kategorie",
     "clusterCount": "Klusters",
     "cluster": "Kluster",
+    "topicTrend": "Onderwerptendens",
     "noResult": "Geen NLP-resultate",
     "pythonRequired": "Loop deur die Python-sidecar in Tauri",
     "reloadLanguages": "Herlaai taal-byvoegings",
