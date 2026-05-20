@@ -29,6 +29,8 @@ BUILTIN_LANGUAGES: dict[str, dict[str, Any]] = {
             "kwic",
             "sentiment",
             "cooccurrence",
+            "collocation",
+            "keyness",
             "tfidf",
             "topic_model",
             "similarity",
@@ -56,7 +58,7 @@ BUILTIN_LANGUAGES: dict[str, dict[str, Any]] = {
             {"word": "弱い", "score": -1},
             {"word": "リスク", "score": -1},
         ],
-        "capabilities": ["frequency", "kwic", "sentiment", "cooccurrence", "tfidf", "topic_model", "similarity", "lexical_stats", "ner", "pos"],
+        "capabilities": ["frequency", "kwic", "sentiment", "cooccurrence", "collocation", "keyness", "tfidf", "topic_model", "similarity", "lexical_stats", "ner", "pos"],
         "credits": [
             {"name": "GiNZA", "authors": "Megagon Labs", "url": "https://megagonlabs.github.io/ginza/", "license": "Apache 2.0", "license_type": "open"},
             {"name": "SudachiDict", "authors": "Works Applications", "url": "https://github.com/WorksApplications/SudachiDict", "license": "Apache 2.0", "license_type": "open"},
@@ -82,6 +84,8 @@ BUILTIN_LANGUAGES: dict[str, dict[str, Any]] = {
             "kwic",
             "sentiment",
             "cooccurrence",
+            "collocation",
+            "keyness",
             "tfidf",
             "topic_model",
             "similarity",
@@ -109,7 +113,7 @@ BUILTIN_LANGUAGES: dict[str, dict[str, Any]] = {
             {"word": "swak", "score": -1},
             {"word": "risiko", "score": -1},
         ],
-        "capabilities": ["frequency", "kwic", "sentiment", "cooccurrence", "tfidf", "topic_model", "similarity", "lexical_stats", "ner", "pos"],
+        "capabilities": ["frequency", "kwic", "sentiment", "cooccurrence", "collocation", "keyness", "tfidf", "topic_model", "similarity", "lexical_stats", "ner", "pos"],
         "credits": [
             {"name": "spaCy xx_ent_wiki_sm", "authors": "Explosion AI", "url": "https://spacy.io", "license": "MIT", "license_type": "open"}
         ],
@@ -119,7 +123,7 @@ BUILTIN_LANGUAGES: dict[str, dict[str, Any]] = {
 
 def _capabilities(config: dict[str, Any]) -> list[str]:
     fallback = config.get("fallback") or {}
-    capabilities = ["frequency", "kwic", "sentiment", "cooccurrence", "tfidf", "topic_model", "similarity", "lexical_stats"]
+    capabilities = ["frequency", "kwic", "sentiment", "cooccurrence", "collocation", "keyness", "tfidf", "topic_model", "similarity", "lexical_stats"]
     if config.get("ner_model") or fallback.get("ner"):
         capabilities.append("ner")
     if config.get("pos_model") or fallback.get("pos"):

@@ -38,4 +38,6 @@ The sidecar exposes additional local NLP commands:
 - `get_languages`
 - `get_credits`
 
+The text-mining layer also includes `kwic`, `cooccurrence`, `collocation`, `keyness`, `tfidf`, and `sentiment` for local corpus statistics without leaving BKI.
+
 Language add-ons are discovered from `~/Documents/BKI/addons/`. See [docs/ADDON_GUIDE.md](docs/ADDON_GUIDE.md).

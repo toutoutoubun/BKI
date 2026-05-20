@@ -60,7 +60,7 @@ export const fallbackLanguages: LanguageInfo[] = [
     built_in: true,
     tokenizer: 'nltk',
     tokenizer_source: 'nltk',
-    capabilities: ['frequency', 'kwic', 'sentiment', 'cooccurrence', 'tfidf', 'topic_model', 'similarity', 'lexical_stats', 'ner', 'pos', 'dependency'],
+    capabilities: ['frequency', 'kwic', 'sentiment', 'cooccurrence', 'collocation', 'keyness', 'tfidf', 'topic_model', 'similarity', 'lexical_stats', 'ner', 'pos', 'dependency'],
   },
   {
     code: 'ja',
@@ -68,7 +68,7 @@ export const fallbackLanguages: LanguageInfo[] = [
     built_in: true,
     tokenizer: 'sudachi',
     tokenizer_source: 'sudachi',
-    capabilities: ['frequency', 'kwic', 'sentiment', 'cooccurrence', 'tfidf', 'topic_model', 'similarity', 'lexical_stats', 'ner', 'pos'],
+    capabilities: ['frequency', 'kwic', 'sentiment', 'cooccurrence', 'collocation', 'keyness', 'tfidf', 'topic_model', 'similarity', 'lexical_stats', 'ner', 'pos'],
   },
   {
     code: 'fr',
@@ -76,7 +76,7 @@ export const fallbackLanguages: LanguageInfo[] = [
     built_in: true,
     tokenizer: 'spacy',
     tokenizer_source: 'spacy',
-    capabilities: ['frequency', 'kwic', 'sentiment', 'cooccurrence', 'tfidf', 'topic_model', 'similarity', 'lexical_stats', 'ner', 'pos', 'dependency'],
+    capabilities: ['frequency', 'kwic', 'sentiment', 'cooccurrence', 'collocation', 'keyness', 'tfidf', 'topic_model', 'similarity', 'lexical_stats', 'ner', 'pos', 'dependency'],
   },
   {
     code: 'af',
@@ -84,7 +84,7 @@ export const fallbackLanguages: LanguageInfo[] = [
     built_in: true,
     tokenizer: 'whitespace',
     tokenizer_source: 'whitespace',
-    capabilities: ['frequency', 'kwic', 'sentiment', 'cooccurrence', 'tfidf', 'topic_model', 'similarity', 'lexical_stats', 'ner', 'pos'],
+    capabilities: ['frequency', 'kwic', 'sentiment', 'cooccurrence', 'collocation', 'keyness', 'tfidf', 'topic_model', 'similarity', 'lexical_stats', 'ner', 'pos'],
   },
 ];
 

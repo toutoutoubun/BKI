@@ -2,13 +2,13 @@ import { invoke } from '@tauri-apps/api/core';
 import { BrainCircuit, Download, Play, RefreshCw, Save, Trash2, Upload } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
+import { Bar, BarChart, CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { deleteAnalysisConfig, listAnalysisConfigs, saveAnalysisConfig, type AnalysisConfigRecord } from '../../lib/analysisConfigs';
 import { useAnalysisStore } from '../../store/analysisStore';
 import { useProcessStore } from '../../store/processStore';
 import type { CorpusDocument } from '../../types';
 
-type MiningCommand = 'kwic' | 'cooccurrence' | 'tfidf' | 'sentiment';
+type MiningCommand = 'kwic' | 'cooccurrence' | 'tfidf' | 'sentiment' | 'keyness' | 'collocation';
 
 interface Props {
   documents: CorpusDocument[];
@@ -78,6 +78,8 @@ function resultCount(command: MiningCommand, result: Record<string, any>) {
   if (command === 'cooccurrence') return Array.isArray(result.edges) ? result.edges.length : 0;
   if (command === 'tfidf') return Array.isArray(result.results) ? result.results.length : 0;
   if (command === 'sentiment') return Object.keys(result.scores ?? {}).length;
+  if (command === 'keyness') return Array.isArray(result.rows) ? result.rows.length : 0;
+  if (command === 'collocation') return Array.isArray(result.rows) ? result.rows.length : 0;
   return 0;
 }
 
@@ -115,6 +117,40 @@ function miningRows(command: MiningCommand, result: Record<string, any>): Array<
         score: term.score,
       })),
     );
+  }
+
+  if (command === 'keyness') {
+    return (result.rows ?? []).map((row: any) => ({
+      section: 'keyness',
+      group_by: result.group_by,
+      group: row.group,
+      term: row.term,
+      direction: row.direction,
+      group_frequency: row.group_frequency,
+      rest_frequency: row.rest_frequency,
+      expected: row.expected,
+      log_likelihood: row.log_likelihood,
+      log_ratio: row.log_ratio,
+      group_per_million: row.group_per_million,
+      rest_per_million: row.rest_per_million,
+    }));
+  }
+
+  if (command === 'collocation') {
+    return (result.rows ?? []).map((row: any) => ({
+      section: 'collocation',
+      query: result.query,
+      window: result.window,
+      node_count: result.node_count,
+      term: row.term,
+      observed: row.observed,
+      frequency: row.frequency,
+      expected: row.expected,
+      pmi: row.pmi,
+      dice: row.dice,
+      t_score: row.t_score,
+      per_million: row.per_million,
+    }));
   }
 
   const scoreRows = Object.entries(result.scores ?? {}).flatMap(([target, scores]) =>
@@ -228,6 +264,46 @@ function renderMiningVisualization(command: MiningCommand, result: Record<string
     );
   }
   if (command === 'cooccurrence') return renderCooccurrenceMatrix(result, t);
+  if (command === 'keyness') {
+    const rows = (result.rows ?? []).slice(0, 14).map((row: any) => ({
+      ...row,
+      signedScore: row.direction === 'underused' ? -Number(row.log_likelihood ?? 0) : Number(row.log_likelihood ?? 0),
+      label: `${row.group}: ${row.term}`,
+    }));
+    if (!rows.length) return null;
+    return (
+      <div className="chart-wrap">
+        <strong className="chart-title">{t('mining.keynessChart')}</strong>
+        <ResponsiveContainer width="100%" height={320}>
+          <BarChart data={rows} layout="vertical" margin={{ top: 12, right: 24, bottom: 12, left: 120 }}>
+            <CartesianGrid stroke="#e2e7de" />
+            <XAxis type="number" tick={{ fontSize: 12 }} />
+            <YAxis type="category" dataKey="label" tick={{ fontSize: 12 }} width={116} />
+            <Tooltip />
+            <Bar dataKey="signedScore" name={t('mining.logLikelihood')} fill="#285f9f" />
+          </BarChart>
+        </ResponsiveContainer>
+      </div>
+    );
+  }
+  if (command === 'collocation') {
+    const rows = (result.rows ?? []).slice(0, 14);
+    if (!rows.length) return null;
+    return (
+      <div className="chart-wrap">
+        <strong className="chart-title">{t('mining.collocationChart')}</strong>
+        <ResponsiveContainer width="100%" height={320}>
+          <BarChart data={rows} margin={{ top: 12, right: 24, bottom: 42, left: 0 }}>
+            <CartesianGrid stroke="#e2e7de" />
+            <XAxis dataKey="term" tick={{ fontSize: 12 }} angle={-35} textAnchor="end" height={58} />
+            <YAxis tick={{ fontSize: 12 }} />
+            <Tooltip />
+            <Bar dataKey="pmi" name="PMI" fill="#226f54" />
+          </BarChart>
+        </ResponsiveContainer>
+      </div>
+    );
+  }
   return null;
 }
 
@@ -283,6 +359,68 @@ function renderResult(command: MiningCommand, result: Record<string, any>, t: (k
             </span>
           </div>
         ))}
+      </div>
+    );
+  }
+
+  if (command === 'keyness') {
+    return (
+      <div className="table-wrap">
+        <table className="analysis-table">
+          <thead>
+            <tr>
+              <th>{t('quant.groupName')}</th>
+              <th>{t('mining.keyword')}</th>
+              <th>{t('mining.direction')}</th>
+              <th>{t('mining.logLikelihood')}</th>
+              <th>{t('mining.logRatio')}</th>
+              <th>{t('mining.perMillion')}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {(result.rows ?? []).slice(0, 80).map((row: any) => (
+              <tr key={`${row.group}-${row.term}`}>
+                <td>{row.group}</td>
+                <td><strong>{row.term}</strong></td>
+                <td>{row.direction === 'underused' ? t('mining.underused') : t('mining.overused')}</td>
+                <td>{Number(row.log_likelihood).toFixed(2)}</td>
+                <td>{Number(row.log_ratio).toFixed(2)}</td>
+                <td>{Number(row.group_per_million).toFixed(1)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    );
+  }
+
+  if (command === 'collocation') {
+    return (
+      <div className="table-wrap">
+        <table className="analysis-table">
+          <thead>
+            <tr>
+              <th>{t('mining.keyword')}</th>
+              <th>{t('mining.observed')}</th>
+              <th>{t('mining.frequency')}</th>
+              <th>PMI</th>
+              <th>Dice</th>
+              <th>t-score</th>
+            </tr>
+          </thead>
+          <tbody>
+            {(result.rows ?? []).slice(0, 80).map((row: any) => (
+              <tr key={row.term}>
+                <td><strong>{row.term}</strong></td>
+                <td>{row.observed}</td>
+                <td>{row.frequency}</td>
+                <td>{Number(row.pmi).toFixed(2)}</td>
+                <td>{Number(row.dice).toFixed(4)}</td>
+                <td>{Number(row.t_score).toFixed(2)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </div>
     );
   }
@@ -345,6 +483,8 @@ function TextMiningPanel({ documents }: Props) {
     if (command === 'kwic') return { documents, query: effectiveQuery, window: windowSize, max_results: 200 };
     if (command === 'cooccurrence') return { documents, terms: effectiveTerms, window: windowSize };
     if (command === 'tfidf') return { documents, top_n: topN };
+    if (command === 'keyness') return { documents, group_by: groupBy, top_n: topN, language: sentimentLanguage, min_frequency: 2 };
+    if (command === 'collocation') return { documents, query: effectiveQuery, window: Math.min(20, Math.max(2, windowSize)), top_n: topN, language: sentimentLanguage };
     const targetTerms = effectiveTerms.length ? effectiveTerms : [effectiveQuery].filter(Boolean);
     return {
       documents,
@@ -356,7 +496,12 @@ function TextMiningPanel({ documents }: Props) {
     };
   };
 
-  const canRun = documents.length > 0 && (command === 'tfidf' || effectiveQuery || effectiveTerms.length > 0);
+  const canRun =
+    documents.length > 0 &&
+    (command === 'tfidf' ||
+      command === 'keyness' ||
+      ((command === 'kwic' || command === 'collocation') && Boolean(effectiveQuery)) ||
+      effectiveTerms.length > 0);
 
   const savePreset = async () => {
     const name = presetName.trim() || selectedPreset?.name || t('mining.defaultPresetName');
@@ -445,8 +590,9 @@ function TextMiningPanel({ documents }: Props) {
         documentCount: documents.length,
         windowSize,
         topN,
-        language: command === 'sentiment' ? sentimentLanguage : undefined,
+        language: ['sentiment', 'keyness', 'collocation'].includes(command) ? sentimentLanguage : undefined,
         lexiconMode: command === 'sentiment' && !parseLexicon(lexiconText).length ? 'language_addon' : 'manual',
+        groupBy: command === 'keyness' ? groupBy : undefined,
       },
     });
 
@@ -505,31 +651,59 @@ function TextMiningPanel({ documents }: Props) {
               <option value="cooccurrence">{t('quant.cooccurrence')}</option>
               <option value="tfidf">{t('quant.tfidf')}</option>
               <option value="sentiment">{t('quant.sentiment')}</option>
+              <option value="keyness">{t('quant.keyness')}</option>
+              <option value="collocation">{t('quant.collocation')}</option>
             </select>
           </label>
-          {command === 'kwic' && (
+          {(command === 'kwic' || command === 'collocation') && (
             <label className="field">
               <span>{t('mining.query')}</span>
               <input className="text-input" value={query} placeholder={firstKeyword} onChange={(event) => setQuery(event.target.value)} />
             </label>
           )}
-          {command !== 'kwic' && command !== 'tfidf' && (
+          {(command === 'cooccurrence' || command === 'sentiment') && (
             <label className="field">
               <span>{t('mining.terms')}</span>
               <input className="text-input" value={terms} onChange={(event) => setTerms(event.target.value)} />
             </label>
           )}
+          {(command === 'sentiment' || command === 'keyness') && (
+            <label className="field">
+              <span>{t('mining.groupBy')}</span>
+              <select className="select-input" value={groupBy} onChange={(event) => setGroupBy(event.target.value as TextMiningPresetConfig['groupBy'])}>
+                <option value="month">{t('quant.groupByMonth')}</option>
+                <option value="year">{t('quant.groupByYear')}</option>
+                <option value="document">{t('quant.groupByDocument')}</option>
+                <option value="category">{t('quant.groupByCategory')}</option>
+              </select>
+            </label>
+          )}
+          {(command === 'tfidf' || command === 'keyness' || command === 'collocation') && (
+            <label className="field">
+              <span>{t('mining.topN')}</span>
+              <input
+                className="text-input"
+                type="number"
+                min={3}
+                max={80}
+                value={topN}
+                onChange={(event) => setTopN(Number(event.target.value))}
+              />
+            </label>
+          )}
+          {(command === 'kwic' || command === 'cooccurrence' || command === 'sentiment' || command === 'collocation') && (
           <label className="field">
-            <span>{command === 'tfidf' ? t('mining.topN') : t('mining.window')}</span>
+            <span>{t('mining.window')}</span>
             <input
               className="text-input"
               type="number"
-              min={command === 'tfidf' ? 3 : 20}
-              max={command === 'tfidf' ? 50 : 400}
-              value={command === 'tfidf' ? topN : windowSize}
-              onChange={(event) => (command === 'tfidf' ? setTopN(Number(event.target.value)) : setWindowSize(Number(event.target.value)))}
+              min={command === 'collocation' ? 2 : 20}
+              max={command === 'collocation' ? 20 : 400}
+              value={windowSize}
+              onChange={(event) => setWindowSize(Number(event.target.value))}
             />
           </label>
+          )}
         </div>
 
         <div className="result-row">

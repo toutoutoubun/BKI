@@ -4,12 +4,14 @@ import traceback
 
 from modules import (
     cooccurrence,
+    collocation,
     credits,
     dependency,
     export,
     frequency,
     ingest,
     kwic,
+    keyness,
     lexical_stats,
     ner,
     persistence,
@@ -28,6 +30,8 @@ DISPATCH = {
     "kwic": kwic.run,
     "sentiment": sentiment.run,
     "cooccurrence": cooccurrence.run,
+    "collocation": collocation.run,
+    "keyness": keyness.run,
     "tfidf": tfidf.run,
     "export": export.run,
     "ner": ner.run,
