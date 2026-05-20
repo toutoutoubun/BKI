@@ -17,6 +17,7 @@ interface CodingStore {
   updateCode: (id: string, patch: Partial<Code>) => void;
   removeCode: (id: string) => void;
   addAnnotation: (ann: Omit<Annotation, 'id'>) => void;
+  importAnnotations: (annotations: Array<Omit<Annotation, 'id'>>) => void;
   updateAnnotation: (id: string, patch: Partial<Annotation>) => void;
   removeAnnotation: (id: string) => void;
   restoreCoding: (codes: Code[], annotations: Annotation[]) => void;
@@ -139,6 +140,21 @@ export const useCodingStore = create<CodingStore>((set) => ({
         start: nextAnnotation.start,
         end: nextAnnotation.end,
         codeCount: nextAnnotation.codeIds.length,
+      },
+    });
+  },
+  importAnnotations: (items) => {
+    const nextAnnotations = items.map((annotation) => ({ ...annotation, id: id() }));
+    set((state) => ({ annotations: [...state.annotations, ...nextAnnotations] }));
+    useProcessStore.getState().addLog({
+      level: nextAnnotations.length > 0 ? 'success' : 'warning',
+      stage: 'qda.annotations',
+      title: 'Annotation CSV imported',
+      detail: `${nextAnnotations.length} annotation(s) imported.`,
+      data: {
+        imported: nextAnnotations.length,
+        documentCount: new Set(nextAnnotations.map((annotation) => annotation.documentId)).size,
+        codeCount: new Set(nextAnnotations.flatMap((annotation) => annotation.codeIds)).size,
       },
     });
   },

@@ -574,6 +574,40 @@ button {
   background: #fff;
 }
 
+.chart-title {
+  display: block;
+  margin-bottom: 8px;
+  color: #25313d;
+  font-size: 0.84rem;
+}
+
+.heatmap-table th,
+.heatmap-table td {
+  min-width: 74px;
+  text-align: center;
+}
+
+.heatmap-table th:first-child {
+  left: 0;
+  position: sticky;
+  z-index: 1;
+  background: #f4f6f8;
+  text-align: left;
+}
+
+.heatmap-cell {
+  display: inline-flex;
+  min-width: 48px;
+  min-height: 26px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  color: #18212b;
+  font-size: 0.76rem;
+  font-weight: 700;
+}
+
 .dispersion-summary {
   display: flex;
   flex-wrap: wrap;

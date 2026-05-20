@@ -2,6 +2,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { AlertTriangle, Brain, Download, Play, RefreshCw } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { Bar, BarChart, CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { fallbackLanguages, loadAvailableLanguages, type LanguageCatalog } from '../../lib/languageAddons';
 import { useProcessStore } from '../../store/processStore';
 import type { CorpusDocument } from '../../types';
@@ -32,6 +33,7 @@ interface TopicModelResult {
 
 const entityTypes = ['PERSON', 'ORG', 'GPE', 'DATE'];
 const posTags = ['NOUN', 'VERB', 'ADJ', 'ADV'];
+const chartColors = ['#285f9f', '#226f54', '#b55b18', '#8a4f9e', '#ba3b46', '#597245', '#718198'];
 
 const commandOptions: Array<{ id: NlpCommand; labelKey: string }> = [
   { id: 'ner', labelKey: 'nlp.ner' },
@@ -222,6 +224,155 @@ function nlpRows(command: NlpCommand, result: unknown, documents: CorpusDocument
     ...(values as Record<string, number>),
   }));
   return [...documentRows, ...timeRows];
+}
+
+function chartRowsFromNestedCounts(data: Record<string, Record<string, number>>) {
+  const periods = [...new Set(Object.values(data).flatMap((values) => Object.keys(values)))].sort();
+  return periods.map((period) => {
+    const row: Record<string, string | number> = { period };
+    Object.entries(data).forEach(([key, values]) => {
+      row[key] = Number(values[period] ?? 0);
+    });
+    return row;
+  });
+}
+
+function renderNerTimelineChart(result: Record<string, any>, t: (key: string) => string) {
+  const byLabel: Record<string, Record<string, number>> = {};
+  Object.entries(result.timeline ?? {}).forEach(([label, periods]) => {
+    byLabel[label] = {};
+    Object.entries(periods as Record<string, Record<string, number>>).forEach(([period, values]) => {
+      byLabel[label][period] = Object.values(values).reduce((sum, count) => sum + Number(count), 0);
+    });
+  });
+  const labels = Object.keys(byLabel);
+  const rows = chartRowsFromNestedCounts(byLabel);
+  if (!rows.length || !labels.length) return null;
+  return (
+    <div className="chart-wrap">
+      <strong className="chart-title">{t('nlp.entityTimeline')}</strong>
+      <ResponsiveContainer width="100%" height={280}>
+        <LineChart data={rows} margin={{ top: 12, right: 24, bottom: 12, left: 0 }}>
+          <CartesianGrid stroke="#e2e7de" />
+          <XAxis dataKey="period" tick={{ fontSize: 12 }} />
+          <YAxis allowDecimals={false} tick={{ fontSize: 12 }} />
+          <Tooltip />
+          <Legend />
+          {labels.map((label, index) => (
+            <Line key={label} type="monotone" dataKey={label} stroke={chartColors[index % chartColors.length]} strokeWidth={2} dot={{ r: 3 }} />
+          ))}
+        </LineChart>
+      </ResponsiveContainer>
+    </div>
+  );
+}
+
+function renderTopicTrendChart(result: Record<string, any>, t: (key: string) => string) {
+  const topics = ((result.topics ?? []) as TopicModelTopic[]).slice(0, 8);
+  const trend = result.topic_over_time ?? {};
+  const topicIds = Object.keys(trend).slice(0, 8);
+  const series = topicIds.map((topicId) => {
+    const index = Number(topicId);
+    const label = String(topics.find((topic) => Number(topic.id) === index)?.label ?? '').trim();
+    return { key: `topic_${topicId}`, topicId, name: label ? `${t('nlp.topic')} ${index + 1}: ${label}` : `${t('nlp.topic')} ${index + 1}` };
+  });
+  const periods = [...new Set(Object.values(trend).flatMap((values) => Object.keys(values as Record<string, number>)))].sort();
+  const rows = periods.map((period) => {
+    const row: Record<string, string | number> = { period };
+    series.forEach((item) => {
+      row[item.key] = Number((trend[item.topicId] as Record<string, number> | undefined)?.[period] ?? 0);
+    });
+    return row;
+  });
+  if (!rows.length || !series.length) return null;
+  return (
+    <div className="chart-wrap">
+      <strong className="chart-title">{t('nlp.topicTrendChart')}</strong>
+      <ResponsiveContainer width="100%" height={280}>
+        <LineChart data={rows} margin={{ top: 12, right: 24, bottom: 12, left: 0 }}>
+          <CartesianGrid stroke="#e2e7de" />
+          <XAxis dataKey="period" tick={{ fontSize: 12 }} />
+          <YAxis tick={{ fontSize: 12 }} />
+          <Tooltip />
+          <Legend />
+          {series.map((item, index) => (
+            <Line key={item.key} name={item.name} type="monotone" dataKey={item.key} stroke={chartColors[index % chartColors.length]} strokeWidth={2} dot={{ r: 3 }} />
+          ))}
+        </LineChart>
+      </ResponsiveContainer>
+    </div>
+  );
+}
+
+function renderPosDistributionChart(result: Record<string, any>, t: (key: string) => string) {
+  const rows = Object.entries(result.distribution ?? {}).map(([period, values]) => ({
+    period,
+    ...(values as Record<string, number>),
+  }));
+  const tags = [...new Set(rows.flatMap((row) => Object.keys(row).filter((key) => key !== 'period')))];
+  if (!rows.length || !tags.length) return null;
+  return (
+    <div className="chart-wrap">
+      <strong className="chart-title">{t('nlp.posDistributionChart')}</strong>
+      <ResponsiveContainer width="100%" height={280}>
+        <BarChart data={rows} margin={{ top: 12, right: 24, bottom: 12, left: 0 }}>
+          <CartesianGrid stroke="#e2e7de" />
+          <XAxis dataKey="period" tick={{ fontSize: 12 }} />
+          <YAxis allowDecimals={false} tick={{ fontSize: 12 }} />
+          <Tooltip />
+          <Legend />
+          {tags.map((tag, index) => (
+            <Bar key={tag} dataKey={tag} stackId="pos" fill={chartColors[index % chartColors.length]} />
+          ))}
+        </BarChart>
+      </ResponsiveContainer>
+    </div>
+  );
+}
+
+function renderSimilarityMatrix(result: Record<string, any>, documents: CorpusDocument[], t: (key: string) => string) {
+  const matrix = result.similarity_matrix as number[][] | undefined;
+  if (!Array.isArray(matrix) || !matrix.length) return null;
+  const visibleDocuments = documents.slice(0, Math.min(12, matrix.length));
+  return (
+    <div className="table-wrap">
+      <table className="analysis-table heatmap-table" aria-label={t('nlp.similarityMatrix')}>
+        <thead>
+          <tr>
+            <th>{t('nlp.similarityMatrix')}</th>
+            {visibleDocuments.map((document) => <th key={document.id}>{document.filename}</th>)}
+          </tr>
+        </thead>
+        <tbody>
+          {visibleDocuments.map((document, rowIndex) => (
+            <tr key={document.id}>
+              <th>{document.filename}</th>
+              {visibleDocuments.map((target, columnIndex) => {
+                const value = Number(matrix[rowIndex]?.[columnIndex] ?? 0);
+                const alpha = Math.min(0.9, 0.08 + value * 0.72);
+                return (
+                  <td key={target.id}>
+                    <span className="heatmap-cell" style={{ backgroundColor: `rgba(40, 95, 159, ${alpha})` }}>
+                      {value.toFixed(2)}
+                    </span>
+                  </td>
+                );
+              })}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function renderNlpVisualization(command: NlpCommand, result: unknown, documents: CorpusDocument[], t: (key: string) => string) {
+  const data = result as Record<string, any>;
+  if (command === 'ner') return renderNerTimelineChart(data, t);
+  if (command === 'topic_model') return renderTopicTrendChart(data, t);
+  if (command === 'similarity') return renderSimilarityMatrix(data, documents, t);
+  if (command === 'pos') return renderPosDistributionChart(data, t);
+  return null;
 }
 
 function renderPreview(
@@ -685,6 +836,7 @@ function NlpPanel({ documents }: Props) {
                 <span className="muted">{(result as Record<string, unknown>).method_backend as string}</span>
               </div>
             )}
+            {renderNlpVisualization(command, result, documents, t)}
             {renderPreview(command, result, documents, t, updateTopicLabel)}
           </div>
         )}

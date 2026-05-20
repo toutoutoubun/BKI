@@ -97,6 +97,52 @@ function parseCodebookCsv(content: string): ImportedCode[] {
   });
 }
 
+function parseAnnotationCsv(content: string, documents: CorpusDocument[], codes: Code[]): Array<Omit<Annotation, 'id'>> {
+  const rows = parseCsvRows(content);
+  if (!rows.length) return [];
+  const header = rows[0].map((cell) => cell.toLowerCase());
+  const hasHeader = ['document', 'document_id', 'start', 'end', 'codes', 'memo'].some((key) => header.includes(key));
+  const documentIndex = hasHeader ? Math.max(header.indexOf('document'), header.indexOf('document_id')) : 0;
+  const startIndex = hasHeader ? header.indexOf('start') : 1;
+  const endIndex = hasHeader ? header.indexOf('end') : 2;
+  const codesIndex = hasHeader ? Math.max(header.indexOf('codes'), header.indexOf('code')) : 3;
+  const memoIndex = hasHeader ? header.indexOf('memo') : 4;
+  const documentByKey = new Map<string, CorpusDocument>();
+  documents.forEach((document) => {
+    documentByKey.set(document.id.toLowerCase(), document);
+    documentByKey.set(document.filename.toLowerCase(), document);
+  });
+  const codeByKey = new Map<string, string>();
+  codes.forEach((code) => {
+    codeByKey.set(code.id.toLowerCase(), code.id);
+    codeByKey.set(code.label.toLowerCase(), code.id);
+  });
+
+  return rows.slice(hasHeader ? 1 : 0).flatMap((row) => {
+    const documentKey = row[documentIndex]?.trim().toLowerCase();
+    const document = documentKey ? documentByKey.get(documentKey) : undefined;
+    if (!document) return [];
+    const start = Number(row[startIndex]);
+    const end = Number(row[endIndex]);
+    if (!Number.isFinite(start) || !Number.isFinite(end)) return [];
+    const codeIds = (row[codesIndex] ?? '')
+      .split(/[;,]/)
+      .map((code) => code.trim().toLowerCase())
+      .flatMap((code) => codeByKey.get(code) ?? [])
+      .filter((codeId, index, all) => all.indexOf(codeId) === index);
+    if (!codeIds.length) return [];
+    const { safeStart, safeEnd } = clampRange(Math.floor(start), Math.floor(end), document.content.length);
+    if (safeStart === safeEnd) return [];
+    return [{
+      documentId: document.id,
+      start: safeStart,
+      end: safeEnd,
+      codeIds,
+      memo: memoIndex >= 0 ? row[memoIndex]?.trim() || undefined : undefined,
+    }];
+  });
+}
+
 function truncate(value: string, limit = 220) {
   return value.length > limit ? `${value.slice(0, limit - 3)}...` : value;
 }
@@ -105,6 +151,7 @@ function QdaTab({ documents }: Props) {
   const { t } = useTranslation();
   const textRef = useRef<HTMLTextAreaElement>(null);
   const codebookInputRef = useRef<HTMLInputElement>(null);
+  const annotationInputRef = useRef<HTMLInputElement>(null);
   const codes = useCodingStore((state) => state.codes);
   const annotations = useCodingStore((state) => state.annotations);
   const addCode = useCodingStore((state) => state.addCode);
@@ -112,6 +159,7 @@ function QdaTab({ documents }: Props) {
   const updateCode = useCodingStore((state) => state.updateCode);
   const removeCode = useCodingStore((state) => state.removeCode);
   const addAnnotation = useCodingStore((state) => state.addAnnotation);
+  const importAnnotations = useCodingStore((state) => state.importAnnotations);
   const updateAnnotation = useCodingStore((state) => state.updateAnnotation);
   const removeAnnotation = useCodingStore((state) => state.removeAnnotation);
   const addLog = useProcessStore((state) => state.addLog);
@@ -136,6 +184,7 @@ function QdaTab({ documents }: Props) {
   const [editMemo, setEditMemo] = useState('');
   const [editCodeIds, setEditCodeIds] = useState<string[]>([]);
   const [codebookImportMessage, setCodebookImportMessage] = useState('');
+  const [annotationImportMessage, setAnnotationImportMessage] = useState('');
 
   const selectedDocument = useMemo(
     () => documents.find((document) => document.id === documentId) ?? documents[0],
@@ -313,6 +362,26 @@ function QdaTab({ documents }: Props) {
         level: 'error',
         stage: 'qda.codebook',
         title: 'Codebook CSV import failed',
+        detail: message,
+        data: { filename: file.name },
+      });
+    }
+  };
+
+  const importAnnotationsCsv = async (file: File) => {
+    setAnnotationImportMessage('');
+    try {
+      const importedAnnotations = parseAnnotationCsv(await file.text(), documents, codes);
+      if (!importedAnnotations.length) throw new Error('No valid annotation rows found.');
+      importAnnotations(importedAnnotations);
+      setAnnotationImportMessage(t('qda.importAnnotationsSuccess', { count: importedAnnotations.length }));
+    } catch (caught) {
+      const message = caught instanceof Error ? caught.message : String(caught);
+      setAnnotationImportMessage(t('qda.importAnnotationsError'));
+      addLog({
+        level: 'error',
+        stage: 'qda.annotations',
+        title: 'Annotation CSV import failed',
         detail: message,
         data: { filename: file.name },
       });
@@ -742,6 +811,10 @@ function QdaTab({ documents }: Props) {
         <div className="panel-header">
           <h2 className="section-title">{t('qda.codeAnalysis')}</h2>
           <div className="toolbar">
+            <button className="ghost-button" type="button" disabled={!documents.length || !codes.length} onClick={() => annotationInputRef.current?.click()}>
+              <Upload size={16} />
+              {t('qda.importAnnotationsCsv')}
+            </button>
             <button className="ghost-button" type="button" disabled={!codes.length} onClick={exportCodebookCsv}>
               <Download size={16} />
               {t('qda.exportCodebookCsv')}
@@ -753,6 +826,18 @@ function QdaTab({ documents }: Props) {
           </div>
         </div>
         <div className="panel-body">
+          <input
+            ref={annotationInputRef}
+            type="file"
+            accept=".csv,text/csv"
+            hidden
+            onChange={(event) => {
+              const file = event.target.files?.[0];
+              if (file) void importAnnotationsCsv(file);
+              event.currentTarget.value = '';
+            }}
+          />
+          {annotationImportMessage && <span className="muted">{annotationImportMessage}</span>}
           <div className="table-wrap">
             <table className="analysis-table">
               <thead>

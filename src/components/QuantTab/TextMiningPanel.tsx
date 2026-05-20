@@ -2,6 +2,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { BrainCircuit, Download, Play, RefreshCw, Save, Trash2, Upload } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { deleteAnalysisConfig, listAnalysisConfigs, saveAnalysisConfig, type AnalysisConfigRecord } from '../../lib/analysisConfigs';
 import { useAnalysisStore } from '../../store/analysisStore';
 import { useProcessStore } from '../../store/processStore';
@@ -26,6 +27,7 @@ interface TextMiningPresetConfig {
 type CsvValue = string | number | boolean | null | undefined;
 
 const textMiningPresetType = 'text_mining_preset';
+const chartColors = ['#285f9f', '#226f54', '#b55b18', '#8a4f9e', '#ba3b46', '#597245'];
 const defaultLexicon = [
   { word: 'good', score: 1 },
   { word: 'strong', score: 1 },
@@ -136,6 +138,97 @@ function miningRows(command: MiningCommand, result: Record<string, any>): Array<
     ),
   );
   return [...scoreRows, ...hitRows];
+}
+
+function sentimentChartRows(result: Record<string, any>) {
+  const scores = result.scores ?? {};
+  const periods = [...new Set(Object.values(scores).flatMap((values) => Object.keys(values as Record<string, number>)))].sort();
+  return periods.map((period) => {
+    const row: Record<string, string | number> = { period };
+    Object.entries(scores).forEach(([target, values]) => {
+      row[target] = Number((values as Record<string, number>)[period] ?? 0);
+    });
+    return row;
+  });
+}
+
+function cooccurrenceTerms(result: Record<string, any>): string[] {
+  const nodeTerms = (result.nodes ?? []).map((node: any) => String(node.id)).filter(Boolean);
+  if (nodeTerms.length) return nodeTerms.slice(0, 14);
+  return [...new Set<string>((result.edges ?? []).flatMap((edge: any) => [edge.source, edge.target].map(String)))].slice(0, 14);
+}
+
+function renderCooccurrenceMatrix(result: Record<string, any>, t: (key: string) => string) {
+  const terms = cooccurrenceTerms(result);
+  if (!terms.length) return null;
+  const matrix = new Map<string, number>();
+  let maxWeight = 0;
+  (result.edges ?? []).forEach((edge: any) => {
+    const source = String(edge.source);
+    const target = String(edge.target);
+    const weight = Number(edge.weight) || 0;
+    matrix.set(`${source}\u0000${target}`, weight);
+    matrix.set(`${target}\u0000${source}`, weight);
+    maxWeight = Math.max(maxWeight, weight);
+  });
+
+  return (
+    <div className="table-wrap">
+      <table className="analysis-table heatmap-table" aria-label={t('mining.cooccurrenceMatrix')}>
+        <thead>
+          <tr>
+            <th>{t('mining.cooccurrenceMatrix')}</th>
+            {terms.map((term) => <th key={term}>{term}</th>)}
+          </tr>
+        </thead>
+        <tbody>
+          {terms.map((source) => (
+            <tr key={source}>
+              <th>{source}</th>
+              {terms.map((target) => {
+                const value = source === target ? 0 : (matrix.get(`${source}\u0000${target}`) ?? 0);
+                const alpha = maxWeight ? Math.min(0.88, 0.12 + (value / maxWeight) * 0.68) : 0;
+                return (
+                  <td key={target}>
+                    <span className="heatmap-cell" style={{ backgroundColor: value ? `rgba(40, 95, 159, ${alpha})` : '#f7f9fb' }}>
+                      {value || ''}
+                    </span>
+                  </td>
+                );
+              })}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function renderMiningVisualization(command: MiningCommand, result: Record<string, any>, t: (key: string) => string) {
+  if (command === 'sentiment') {
+    const rows = sentimentChartRows(result);
+    const targets = Object.keys(result.scores ?? {});
+    if (!rows.length || !targets.length) return null;
+    return (
+      <div className="chart-wrap">
+        <strong className="chart-title">{t('mining.sentimentTrend')}</strong>
+        <ResponsiveContainer width="100%" height={280}>
+          <LineChart data={rows} margin={{ top: 12, right: 24, bottom: 12, left: 0 }}>
+            <CartesianGrid stroke="#e2e7de" />
+            <XAxis dataKey="period" tick={{ fontSize: 12 }} />
+            <YAxis tick={{ fontSize: 12 }} />
+            <Tooltip />
+            <Legend />
+            {targets.map((target, index) => (
+              <Line key={target} type="monotone" dataKey={target} stroke={chartColors[index % chartColors.length]} strokeWidth={2} dot={{ r: 3 }} />
+            ))}
+          </LineChart>
+        </ResponsiveContainer>
+      </div>
+    );
+  }
+  if (command === 'cooccurrence') return renderCooccurrenceMatrix(result, t);
+  return null;
 }
 
 function renderResult(command: MiningCommand, result: Record<string, any>, t: (key: string) => string) {
@@ -511,6 +604,7 @@ function TextMiningPanel({ documents }: Props) {
                 </span>
               </div>
             )}
+            {renderMiningVisualization(command, result, t)}
             {renderResult(command, result, t)}
           </div>
         )}
