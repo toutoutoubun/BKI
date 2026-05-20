@@ -1,6 +1,7 @@
 import { BarChart3, CheckCircle2, Download, Edit3, FileDown, Plus, Sparkles, Trash2, Upload } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useAnalysisStore } from '../../store/analysisStore';
 import { useCodingStore, type ImportedCode } from '../../store/codingStore';
 import { useProcessStore } from '../../store/processStore';
 import type { Annotation, Code, CorpusDocument } from '../../types';
@@ -50,6 +51,34 @@ interface CooccurrenceRow {
   targetLabel: string;
   targetColor: string;
   count: number;
+}
+
+interface CodeKeywordRow {
+  codeId: string;
+  codeLabel: string;
+  codeColor: string;
+  keywordGroupId: string;
+  keywordGroupName: string;
+  hitCount: number;
+  annotationCount: number;
+  documentCount: number;
+  terms: string[];
+}
+
+interface MixedEvidenceRow {
+  id: string;
+  annotationId: string;
+  documentId: string;
+  documentName: string;
+  codeId: string;
+  codeLabel: string;
+  codeColor: string;
+  keywordGroupId: string;
+  keywordGroupName: string;
+  term: string;
+  start: number;
+  end: number;
+  excerpt: string;
 }
 
 type CaseDimension = 'category' | 'author' | 'language' | 'tag';
@@ -208,6 +237,25 @@ function codeSearchTerms(code: Code) {
   return uniqueValues([...phraseTerms, ...wordTerms]).slice(0, 12);
 }
 
+function findTermHits(text: string, terms: string[]) {
+  const hits: Array<{ term: string; start: number; end: number }> = [];
+  uniqueValues(terms)
+    .sort((left, right) => right.length - left.length)
+    .slice(0, 100)
+    .forEach((term) => {
+      const expression = new RegExp(escapeRegExp(term), term.match(/^[\w -]+$/i) ? 'giu' : 'gu');
+      let match: RegExpExecArray | null;
+      while ((match = expression.exec(text))) {
+        if (!match[0]) {
+          expression.lastIndex += 1;
+          continue;
+        }
+        hits.push({ term, start: match.index, end: match.index + match[0].length });
+      }
+    });
+  return hits.sort((left, right) => left.start - right.start || right.end - left.end || left.term.localeCompare(right.term));
+}
+
 function sentenceRange(content: string, start: number, end: number) {
   const leftBoundary = Math.max(
     content.lastIndexOf('\n', start),
@@ -257,6 +305,7 @@ function QdaTab({ documents }: Props) {
   const textRef = useRef<HTMLTextAreaElement>(null);
   const codebookInputRef = useRef<HTMLInputElement>(null);
   const annotationInputRef = useRef<HTMLInputElement>(null);
+  const keywordGroups = useAnalysisStore((state) => state.keywordGroups);
   const codes = useCodingStore((state) => state.codes);
   const annotations = useCodingStore((state) => state.annotations);
   const addCode = useCodingStore((state) => state.addCode);
@@ -438,6 +487,133 @@ function QdaTab({ documents }: Props) {
       max: Math.max(1, ...cooccurrenceRows.map((row) => row.count)),
     };
   }, [codes, cooccurrenceRows]);
+
+  const mixedEvidenceRows = useMemo<MixedEvidenceRow[]>(() => {
+    const documentById = new Map(documents.map((document) => [document.id, document]));
+    const codeById = new Map(codes.map((code) => [code.id, code]));
+    const activeKeywordGroups = keywordGroups
+      .map((group) => ({ ...group, terms: uniqueValues(group.terms) }))
+      .filter((group) => group.terms.length);
+    const seen = new Set<string>();
+    const rows: MixedEvidenceRow[] = [];
+
+    annotations.forEach((annotation) => {
+      const document = documentById.get(annotation.documentId);
+      if (!document) return;
+      const { safeStart, safeEnd } = clampRange(annotation.start, annotation.end, document.content.length);
+      if (safeStart === safeEnd) return;
+      const excerpt = document.content.slice(safeStart, safeEnd);
+      const annotationCodes = annotation.codeIds
+        .map((codeId) => codeById.get(codeId))
+        .filter((code): code is Code => Boolean(code));
+      if (!annotationCodes.length) return;
+
+      activeKeywordGroups.forEach((group) => {
+        findTermHits(excerpt, group.terms).forEach((hit) => {
+          const absoluteStart = safeStart + hit.start;
+          const absoluteEnd = safeStart + hit.end;
+          annotationCodes.forEach((code) => {
+            const id = `${annotation.id}\u0000${code.id}\u0000${group.id}\u0000${hit.term}\u0000${absoluteStart}`;
+            if (seen.has(id)) return;
+            seen.add(id);
+            const contextStart = Math.max(0, absoluteStart - 80);
+            const contextEnd = Math.min(document.content.length, absoluteEnd + 120);
+            rows.push({
+              id,
+              annotationId: annotation.id,
+              documentId: document.id,
+              documentName: document.filename,
+              codeId: code.id,
+              codeLabel: code.label,
+              codeColor: code.color,
+              keywordGroupId: group.id,
+              keywordGroupName: group.name,
+              term: hit.term,
+              start: absoluteStart,
+              end: absoluteEnd,
+              excerpt: truncate(document.content.slice(contextStart, contextEnd), 260),
+            });
+          });
+        });
+      });
+    });
+
+    return rows.sort(
+      (left, right) =>
+        left.documentName.localeCompare(right.documentName) ||
+        left.start - right.start ||
+        left.codeLabel.localeCompare(right.codeLabel) ||
+        left.keywordGroupName.localeCompare(right.keywordGroupName),
+    );
+  }, [annotations, codes, documents, keywordGroups]);
+
+  const codeKeywordRows = useMemo<CodeKeywordRow[]>(() => {
+    const grouped = new Map<
+      string,
+      {
+        codeId: string;
+        codeLabel: string;
+        codeColor: string;
+        keywordGroupId: string;
+        keywordGroupName: string;
+        hitCount: number;
+        annotationIds: Set<string>;
+        documentIds: Set<string>;
+        terms: Set<string>;
+      }
+    >();
+
+    mixedEvidenceRows.forEach((row) => {
+      const key = `${row.codeId}\u0000${row.keywordGroupId}`;
+      const current =
+        grouped.get(key) ??
+        {
+          codeId: row.codeId,
+          codeLabel: row.codeLabel,
+          codeColor: row.codeColor,
+          keywordGroupId: row.keywordGroupId,
+          keywordGroupName: row.keywordGroupName,
+          hitCount: 0,
+          annotationIds: new Set<string>(),
+          documentIds: new Set<string>(),
+          terms: new Set<string>(),
+        };
+      current.hitCount += 1;
+      current.annotationIds.add(row.annotationId);
+      current.documentIds.add(row.documentId);
+      current.terms.add(row.term);
+      grouped.set(key, current);
+    });
+
+    return [...grouped.values()]
+      .map((row) => ({
+        codeId: row.codeId,
+        codeLabel: row.codeLabel,
+        codeColor: row.codeColor,
+        keywordGroupId: row.keywordGroupId,
+        keywordGroupName: row.keywordGroupName,
+        hitCount: row.hitCount,
+        annotationCount: row.annotationIds.size,
+        documentCount: row.documentIds.size,
+        terms: [...row.terms].sort((left, right) => left.localeCompare(right)),
+      }))
+      .sort((left, right) => right.hitCount - left.hitCount || left.codeLabel.localeCompare(right.codeLabel));
+  }, [mixedEvidenceRows]);
+
+  const codeKeywordMatrix = useMemo(() => {
+    const activeCodeIds = new Set(codeKeywordRows.map((row) => row.codeId));
+    const activeGroupIds = new Set(codeKeywordRows.map((row) => row.keywordGroupId));
+    const counts = new Map<string, number>();
+    codeKeywordRows.forEach((row) => counts.set(`${row.codeId}\u0000${row.keywordGroupId}`, row.hitCount));
+    return {
+      codes: codes.filter((code) => activeCodeIds.has(code.id)).slice(0, 12),
+      groups: keywordGroups.filter((group) => activeGroupIds.has(group.id)).slice(0, 12),
+      counts,
+      max: Math.max(1, ...codeKeywordRows.map((row) => row.hitCount)),
+    };
+  }, [codeKeywordRows, codes, keywordGroups]);
+
+  const strongestCodeKeyword = codeKeywordRows[0];
 
   const corpusCoverage = useMemo(() => {
     const codedCharacters = coverageRows.reduce((sum, row) => sum + row.codedCharacters, 0);
@@ -622,6 +798,15 @@ function QdaTab({ documents }: Props) {
       target_code: row.targetLabel,
       count: row.count,
     })),
+    ...codeKeywordRows.map((row) => ({
+      section: 'code_keyword_bridge',
+      code: row.codeLabel,
+      keyword_group: row.keywordGroupName,
+      keyword_hits: row.hitCount,
+      annotations: row.annotationCount,
+      documents: row.documentCount,
+      terms: row.terms.join('; '),
+    })),
     ...caseMatrix.flatMap((row) =>
       row.counts.map(({ code, count }) => ({
         section: 'case_matrix',
@@ -638,6 +823,28 @@ function QdaTab({ documents }: Props) {
       issue: finding.issue,
       detail: finding.detail,
       fix: finding.fix,
+    })),
+  ];
+
+  const mixedMethodRows = () => [
+    ...codeKeywordRows.map((row) => ({
+      section: 'code_keyword_matrix',
+      code: row.codeLabel,
+      keyword_group: row.keywordGroupName,
+      keyword_hits: row.hitCount,
+      annotations: row.annotationCount,
+      documents: row.documentCount,
+      terms: row.terms.join('; '),
+    })),
+    ...mixedEvidenceRows.map((row) => ({
+      section: 'evidence',
+      document: row.documentName,
+      code: row.codeLabel,
+      keyword_group: row.keywordGroupName,
+      term: row.term,
+      start: row.start,
+      end: row.end,
+      excerpt: row.excerpt,
     })),
   ];
 
@@ -677,6 +884,23 @@ function QdaTab({ documents }: Props) {
       title: 'QDA intelligence CSV exported',
       detail: `${rows.length} insight row(s) were exported.`,
       data: { rowCount: rows.length, caseDimension },
+    });
+  };
+
+  const exportMixedMethodsCsv = () => {
+    const rows = mixedMethodRows();
+    if (!rows.length) return;
+    downloadText('bki-code-keyword-bridge.csv', toCsv(rows), 'text/csv;charset=utf-8');
+    addLog({
+      level: 'success',
+      stage: 'qda.mixed_methods',
+      title: 'Code-keyword bridge CSV exported',
+      detail: `${rows.length} mixed-method row(s) were exported.`,
+      data: {
+        rowCount: rows.length,
+        matrixRows: codeKeywordRows.length,
+        evidenceRows: mixedEvidenceRows.length,
+      },
     });
   };
 
@@ -1327,6 +1551,10 @@ function QdaTab({ documents }: Props) {
               <FileDown size={16} />
               {t('qda.exportInsightsCsv')}
             </button>
+            <button className="ghost-button" type="button" disabled={!mixedMethodRows().length} onClick={exportMixedMethodsCsv}>
+              <FileDown size={16} />
+              {t('qda.exportMixedMethodsCsv')}
+            </button>
             <button className="ghost-button" type="button" disabled={!codes.length} onClick={exportCodebookCsv}>
               <Download size={16} />
               {t('qda.exportCodebookCsv')}
@@ -1362,6 +1590,14 @@ function QdaTab({ documents }: Props) {
             <div className="insight-tile">
               <span>{t('qda.codeCooccurrence')}</span>
               <strong>{cooccurrenceRows.length}</strong>
+            </div>
+            <div className="insight-tile">
+              <span>{t('qda.codeKeywordLinks')}</span>
+              <strong>{codeKeywordRows.length}</strong>
+            </div>
+            <div className="insight-tile">
+              <span>{t('qda.keywordHits')}</span>
+              <strong>{mixedEvidenceRows.length}</strong>
             </div>
             <div className="insight-tile">
               <span>{t('qda.auditIssue')}</span>
@@ -1441,6 +1677,108 @@ function QdaTab({ documents }: Props) {
                 <p>{t('qda.coverageSummaryDetail', { documents: documents.length, annotations: annotations.length, codes: codes.length })}</p>
               </div>
             </div>
+            <div className="field">
+              <span>{t('qda.mixedBridgeSummary')}</span>
+              <div className="selection-preview">
+                <strong>
+                  {strongestCodeKeyword
+                    ? `${strongestCodeKeyword.codeLabel} × ${strongestCodeKeyword.keywordGroupName}`
+                    : t('common.none')}
+                </strong>
+                <p>
+                  {strongestCodeKeyword
+                    ? t('qda.mixedBridgeSummaryDetail', {
+                      hits: strongestCodeKeyword.hitCount,
+                      annotations: strongestCodeKeyword.annotationCount,
+                      documents: strongestCodeKeyword.documentCount,
+                    })
+                    : t('qda.noMixedEvidence')}
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div className="table-wrap">
+            <table className="analysis-table heatmap-table" aria-label={t('qda.codeKeywordMatrix')}>
+              <thead>
+                <tr>
+                  <th>
+                    <BarChart3 size={15} />
+                    {t('qda.codeKeywordMatrix')}
+                  </th>
+                  {codeKeywordMatrix.groups.map((group) => (
+                    <th key={group.id}>{group.name}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {codeKeywordMatrix.codes.length === 0 || codeKeywordMatrix.groups.length === 0 ? (
+                  <tr>
+                    <td colSpan={Math.max(1, codeKeywordMatrix.groups.length + 1)}>{t('qda.noMixedEvidence')}</td>
+                  </tr>
+                ) : (
+                  codeKeywordMatrix.codes.map((code) => (
+                    <tr key={code.id}>
+                      <th>
+                        <span className="code-pill" style={{ borderColor: code.color }}>
+                          <span className="color-chip small" style={{ background: code.color }} />
+                          {code.label}
+                        </span>
+                      </th>
+                      {codeKeywordMatrix.groups.map((group) => {
+                        const value = codeKeywordMatrix.counts.get(`${code.id}\u0000${group.id}`) ?? 0;
+                        const alpha = value ? Math.min(0.9, 0.12 + (value / codeKeywordMatrix.max) * 0.7) : 0;
+                        return (
+                          <td key={group.id}>
+                            <span className="heatmap-cell" style={{ backgroundColor: value ? `rgba(35, 111, 89, ${alpha})` : '#f7f9fb' }}>
+                              {value || ''}
+                            </span>
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+
+          <div className="table-wrap">
+            <table className="analysis-table">
+              <thead>
+                <tr>
+                  <th>{t('qda.mixedEvidence')}</th>
+                  <th>{t('qda.codeLabel')}</th>
+                  <th>{t('qda.keywordGroup')}</th>
+                  <th>{t('qda.term')}</th>
+                  <th>{t('qda.range')}</th>
+                  <th>{t('qda.selectedText')}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {mixedEvidenceRows.length === 0 ? (
+                  <tr>
+                    <td colSpan={6}>{t('qda.noMixedEvidence')}</td>
+                  </tr>
+                ) : (
+                  mixedEvidenceRows.slice(0, 80).map((row) => (
+                    <tr key={row.id}>
+                      <td>{row.documentName}</td>
+                      <td>
+                        <span className="code-pill" style={{ borderColor: row.codeColor }}>
+                          <span className="color-chip small" style={{ background: row.codeColor }} />
+                          {row.codeLabel}
+                        </span>
+                      </td>
+                      <td>{row.keywordGroupName}</td>
+                      <td>{row.term}</td>
+                      <td>{row.start}-{row.end}</td>
+                      <td>{row.excerpt}</td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
           </div>
 
           <div className="table-wrap">
