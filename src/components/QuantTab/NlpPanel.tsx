@@ -7,7 +7,7 @@ import { useProcessStore } from '../../store/processStore';
 import type { CorpusDocument } from '../../types';
 
 type NlpCommand = 'ner' | 'topic_model' | 'similarity' | 'pos' | 'dependency' | 'lexical_stats';
-type TopicMethod = 'nmf' | 'lda';
+type TopicMethod = 'nmf' | 'lda' | 'stm';
 type MetadataField = 'month' | 'year' | 'document' | 'category';
 
 interface Props {
@@ -536,6 +536,7 @@ function NlpPanel({ documents }: Props) {
                 <select className="select-input" value={topicMethod} onChange={(event) => setTopicMethod(event.target.value as TopicMethod)}>
                   <option value="nmf">{t('nlp.topicMethodNmf')}</option>
                   <option value="lda">{t('nlp.topicMethodLda')}</option>
+                  <option value="stm">{t('nlp.topicMethodStm')}</option>
                 </select>
               </label>
               <label className="field">
@@ -676,6 +677,12 @@ function NlpPanel({ documents }: Props) {
               <div className="result-row compact">
                 <strong>{t('nlp.tokenizer')}</strong>
                 <span className="muted">{(result as Record<string, unknown>).tokenizer_source as string}</span>
+              </div>
+            )}
+            {typeof (result as Record<string, unknown>).method_backend === 'string' && (
+              <div className="result-row compact">
+                <strong>{t('nlp.methodBackend')}</strong>
+                <span className="muted">{(result as Record<string, unknown>).method_backend as string}</span>
               </div>
             )}
             {renderPreview(command, result, documents, t, updateTopicLabel)}

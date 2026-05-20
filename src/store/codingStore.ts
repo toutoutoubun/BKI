@@ -2,10 +2,18 @@ import { create } from 'zustand';
 import type { Annotation, Code } from '../types';
 import { useProcessStore } from './processStore';
 
+export interface ImportedCode {
+  label: string;
+  color?: string;
+  description?: string;
+  parentLabel?: string;
+}
+
 interface CodingStore {
   codes: Code[];
   annotations: Annotation[];
   addCode: (code: Omit<Code, 'id'>) => void;
+  importCodes: (codes: ImportedCode[]) => void;
   updateCode: (id: string, patch: Partial<Code>) => void;
   removeCode: (id: string) => void;
   addAnnotation: (ann: Omit<Annotation, 'id'>) => void;
@@ -18,6 +26,11 @@ const id = () =>
   typeof crypto !== 'undefined' && 'randomUUID' in crypto
     ? crypto.randomUUID()
     : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+
+const defaultCodeColors = ['#2f80ed', '#226f54', '#b55b18', '#8a4f9e', '#ba3b46', '#597245'];
+const normalizeLabel = (label: string) => label.trim().toLowerCase();
+const normalizeColor = (color: string | undefined, index: number) =>
+  /^#[0-9a-f]{6}$/iu.test(color ?? '') ? color as string : defaultCodeColors[index % defaultCodeColors.length];
 
 export const useCodingStore = create<CodingStore>((set) => ({
   codes: [
@@ -41,6 +54,49 @@ export const useCodingStore = create<CodingStore>((set) => ({
         codeId: nextCode.id,
         label: nextCode.label,
         color: nextCode.color,
+      },
+    });
+  },
+  importCodes: (items) => {
+    let imported = 0;
+    let skipped = 0;
+    set((state) => {
+      const existingByLabel = new Map(state.codes.map((code) => [normalizeLabel(code.label), code.id]));
+      const createdSeeds: Array<{ id: string; item: ImportedCode; index: number }> = [];
+
+      items.forEach((item, index) => {
+        const label = item.label.trim();
+        const key = normalizeLabel(label);
+        if (!label || existingByLabel.has(key)) {
+          skipped += 1;
+          return;
+        }
+        const nextId = id();
+        existingByLabel.set(key, nextId);
+        createdSeeds.push({ id: nextId, item: { ...item, label }, index });
+      });
+
+      const nextCodes = createdSeeds.map(({ id: codeId, item, index }) => {
+        const parentId = item.parentLabel ? existingByLabel.get(normalizeLabel(item.parentLabel)) : undefined;
+        return {
+          id: codeId,
+          label: item.label.trim(),
+          color: normalizeColor(item.color, index),
+          description: item.description?.trim() || undefined,
+          parentId: parentId && parentId !== codeId ? parentId : undefined,
+        };
+      });
+      imported = nextCodes.length;
+      return { codes: [...state.codes, ...nextCodes] };
+    });
+    useProcessStore.getState().addLog({
+      level: imported > 0 ? 'success' : 'warning',
+      stage: 'qda.codebook',
+      title: 'Codebook CSV imported',
+      detail: `${imported} code(s) imported; ${skipped} duplicate or empty row(s) skipped.`,
+      data: {
+        imported,
+        skipped,
       },
     });
   },

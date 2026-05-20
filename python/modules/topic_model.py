@@ -86,7 +86,8 @@ def run(payload: dict[str, Any]) -> dict[str, Any]:
             lowercase=False,
         )
         matrix = vectorizer.fit_transform(texts)
-        model = LatentDirichletAllocation(n_components=n_topics, random_state=42) if method == "lda" else NMF(n_components=n_topics, random_state=42)
+        effective_method = "lda" if method == "lda" else "nmf"
+        model = LatentDirichletAllocation(n_components=n_topics, random_state=42) if effective_method == "lda" else NMF(n_components=n_topics, random_state=42)
         doc_topic = model.fit_transform(matrix)
         terms = vectorizer.get_feature_names_out()
 
@@ -111,9 +112,12 @@ def run(payload: dict[str, Any]) -> dict[str, Any]:
             "doc_topic_matrix": doc_topic_matrix,
             "topic_over_time": topic_over_time,
             "method": method,
+            "method_backend": "nmf_metadata_trend" if method == "stm" else effective_method,
             "tokenizer_source": tokenizer_source(lang_config),
         }
     except Exception:  # noqa: BLE001
         result = _fallback_topics(docs, n_topics, n_words, group_by, language)
+        result["method"] = method
+        result["method_backend"] = "fallback_metadata_trend" if method == "stm" else "fallback"
         result["tokenizer_source"] = tokenizer_source(lang_config)
         return result

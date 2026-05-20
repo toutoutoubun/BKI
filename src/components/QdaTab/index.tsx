@@ -1,7 +1,7 @@
-import { Download, Edit3, Plus, Trash2 } from 'lucide-react';
+import { Download, Edit3, Plus, Trash2, Upload } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useCodingStore } from '../../store/codingStore';
+import { useCodingStore, type ImportedCode } from '../../store/codingStore';
 import { useProcessStore } from '../../store/processStore';
 import type { Annotation, Code, CorpusDocument } from '../../types';
 
@@ -42,6 +42,61 @@ function toCsv(rows: Array<Record<string, string | number>>) {
   return [headers.join(','), ...rows.map((row) => headers.map((header) => escape(row[header] ?? '')).join(','))].join('\n');
 }
 
+function parseCsvRows(content: string) {
+  const rows: string[][] = [];
+  let row: string[] = [];
+  let cell = '';
+  let inQuotes = false;
+
+  for (let index = 0; index < content.length; index += 1) {
+    const char = content[index];
+    const next = content[index + 1];
+    if (char === '"' && inQuotes && next === '"') {
+      cell += '"';
+      index += 1;
+    } else if (char === '"') {
+      inQuotes = !inQuotes;
+    } else if (char === ',' && !inQuotes) {
+      row.push(cell.trim());
+      cell = '';
+    } else if ((char === '\n' || char === '\r') && !inQuotes) {
+      if (char === '\r' && next === '\n') index += 1;
+      row.push(cell.trim());
+      if (row.some(Boolean)) rows.push(row);
+      row = [];
+      cell = '';
+    } else {
+      cell += char;
+    }
+  }
+
+  row.push(cell.trim());
+  if (row.some(Boolean)) rows.push(row);
+  return rows;
+}
+
+function parseCodebookCsv(content: string): ImportedCode[] {
+  const rows = parseCsvRows(content);
+  if (!rows.length) return [];
+  const header = rows[0].map((cell) => cell.toLowerCase());
+  const hasHeader = ['label', 'code', 'name', 'description', 'color', 'parent'].some((key) => header.includes(key));
+  const labelIndex = hasHeader ? Math.max(header.indexOf('label'), header.indexOf('code'), header.indexOf('name')) : 0;
+  const descriptionIndex = hasHeader ? header.indexOf('description') : 1;
+  const colorIndex = hasHeader ? header.indexOf('color') : 2;
+  const parentIndex = hasHeader ? Math.max(header.indexOf('parent'), header.indexOf('parentcode'), header.indexOf('parent_code')) : 3;
+
+  return rows.slice(hasHeader ? 1 : 0).flatMap((row) => {
+    const label = row[labelIndex]?.trim();
+    if (!label) return [];
+    return [{
+      label,
+      description: descriptionIndex >= 0 ? row[descriptionIndex] : undefined,
+      color: colorIndex >= 0 ? row[colorIndex] : undefined,
+      parentLabel: parentIndex >= 0 ? row[parentIndex] : undefined,
+    }];
+  });
+}
+
 function truncate(value: string, limit = 220) {
   return value.length > limit ? `${value.slice(0, limit - 3)}...` : value;
 }
@@ -49,9 +104,11 @@ function truncate(value: string, limit = 220) {
 function QdaTab({ documents }: Props) {
   const { t } = useTranslation();
   const textRef = useRef<HTMLTextAreaElement>(null);
+  const codebookInputRef = useRef<HTMLInputElement>(null);
   const codes = useCodingStore((state) => state.codes);
   const annotations = useCodingStore((state) => state.annotations);
   const addCode = useCodingStore((state) => state.addCode);
+  const importCodes = useCodingStore((state) => state.importCodes);
   const updateCode = useCodingStore((state) => state.updateCode);
   const removeCode = useCodingStore((state) => state.removeCode);
   const addAnnotation = useCodingStore((state) => state.addAnnotation);
@@ -78,6 +135,7 @@ function QdaTab({ documents }: Props) {
   const [editEnd, setEditEnd] = useState(0);
   const [editMemo, setEditMemo] = useState('');
   const [editCodeIds, setEditCodeIds] = useState<string[]>([]);
+  const [codebookImportMessage, setCodebookImportMessage] = useState('');
 
   const selectedDocument = useMemo(
     () => documents.find((document) => document.id === documentId) ?? documents[0],
@@ -241,6 +299,26 @@ function QdaTab({ documents }: Props) {
     });
   };
 
+  const importCodebookCsv = async (file: File) => {
+    setCodebookImportMessage('');
+    try {
+      const importedCodes = parseCodebookCsv(await file.text());
+      if (!importedCodes.length) throw new Error('No code rows found.');
+      importCodes(importedCodes);
+      setCodebookImportMessage(t('qda.importCodebookSuccess', { count: importedCodes.length }));
+    } catch (caught) {
+      const message = caught instanceof Error ? caught.message : String(caught);
+      setCodebookImportMessage(t('qda.importCodebookError'));
+      addLog({
+        level: 'error',
+        stage: 'qda.codebook',
+        title: 'Codebook CSV import failed',
+        detail: message,
+        data: { filename: file.name },
+      });
+    }
+  };
+
   const submitCode = () => {
     if (!label.trim()) return;
     addCode({ label: label.trim(), description: description.trim() || undefined, color, parentId: parentId || undefined });
@@ -359,12 +437,30 @@ function QdaTab({ documents }: Props) {
       <section className="panel">
         <div className="panel-header">
           <h2 className="section-title">{t('qda.codes')}</h2>
-          <button className="primary-button" type="button" onClick={submitCode}>
-            <Plus size={17} />
-            {t('qda.addCode')}
-          </button>
+          <div className="toolbar">
+            <button className="ghost-button" type="button" onClick={() => codebookInputRef.current?.click()}>
+              <Upload size={17} />
+              {t('qda.importCodebookCsv')}
+            </button>
+            <button className="primary-button" type="button" onClick={submitCode}>
+              <Plus size={17} />
+              {t('qda.addCode')}
+            </button>
+          </div>
         </div>
         <div className="panel-body">
+          <input
+            ref={codebookInputRef}
+            type="file"
+            accept=".csv,text/csv"
+            hidden
+            onChange={(event) => {
+              const file = event.target.files?.[0];
+              if (file) void importCodebookCsv(file);
+              event.currentTarget.value = '';
+            }}
+          />
+          {codebookImportMessage && <span className="muted">{codebookImportMessage}</span>}
           <div className="field-grid">
             <label className="field">
               <span>{t('qda.codeLabel')}</span>
