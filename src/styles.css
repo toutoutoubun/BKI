@@ -507,6 +507,63 @@ button {
   white-space: pre-wrap;
 }
 
+.insight-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.insight-tile {
+  display: grid;
+  gap: 5px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 10px;
+  background: #f8fafc;
+}
+
+.insight-tile span {
+  color: var(--muted);
+  font-size: 0.76rem;
+  font-weight: 600;
+}
+
+.insight-tile strong {
+  color: #18212b;
+  font-size: 1.18rem;
+}
+
+.audit-list {
+  display: grid;
+  gap: 8px;
+}
+
+.audit-row {
+  display: grid;
+  grid-template-columns: auto minmax(160px, 0.28fr) minmax(0, 1fr) minmax(220px, 0.9fr);
+  align-items: center;
+  gap: 10px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 9px 10px;
+  background: #fff;
+}
+
+.audit-row.warning {
+  border-color: #edc878;
+  background: #fff9ea;
+}
+
+.audit-row.info {
+  border-color: #cbd8ea;
+  background: #f6f9fd;
+}
+
+.audit-row.ok {
+  border-color: #bad6c8;
+  background: #f3faf6;
+}
+
 .warning-row {
   border-color: #edc878;
   background: #fff9ea;
@@ -934,6 +991,24 @@ button {
   border-color: #d6d2ef;
 }
 
+.badge.ok {
+  color: #1d5d42;
+  background: #ecf8f1;
+  border-color: #bad6c8;
+}
+
+.badge.info {
+  color: #285f9f;
+  background: #eef5fc;
+  border-color: #cbd8ea;
+}
+
+.badge.warning {
+  color: #7a5200;
+  background: #fff5df;
+  border-color: #f0d49f;
+}
+
 .empty-state {
   min-height: 150px;
   display: grid;
@@ -1088,7 +1163,9 @@ button {
   .guide-sections,
   .annotation-grid,
   .preview-grid,
-  .code-checkbox-grid {
+  .code-checkbox-grid,
+  .insight-grid,
+  .audit-row {
     grid-template-columns: 1fr;
   }
 }

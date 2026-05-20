@@ -1,4 +1,4 @@
-import { Download, Edit3, Plus, Trash2, Upload } from 'lucide-react';
+import { BarChart3, CheckCircle2, Download, Edit3, FileDown, Plus, Sparkles, Trash2, Upload } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useCodingStore, type ImportedCode } from '../../store/codingStore';
@@ -19,6 +19,49 @@ interface CodeSummary {
   memoCount: number;
 }
 
+interface AutoCodeSuggestion {
+  id: string;
+  documentId: string;
+  documentName: string;
+  codeId: string;
+  codeLabel: string;
+  codeColor: string;
+  start: number;
+  end: number;
+  term: string;
+  excerpt: string;
+  confidence: number;
+}
+
+interface CoverageRow {
+  documentId: string;
+  filename: string;
+  annotationCount: number;
+  distinctCodeCount: number;
+  codedCharacters: number;
+  coverage: number;
+}
+
+interface CooccurrenceRow {
+  sourceId: string;
+  sourceLabel: string;
+  sourceColor: string;
+  targetId: string;
+  targetLabel: string;
+  targetColor: string;
+  count: number;
+}
+
+type CaseDimension = 'category' | 'author' | 'language' | 'tag';
+type AuditSeverity = 'ok' | 'info' | 'warning';
+
+interface AuditFinding {
+  severity: AuditSeverity;
+  issue: string;
+  detail: string;
+  fix: string;
+}
+
 function clampRange(start: number, end: number, contentLength: number) {
   const safeStart = Math.max(0, Math.min(start, contentLength));
   const safeEnd = Math.max(safeStart, Math.min(end, contentLength));
@@ -35,10 +78,10 @@ function downloadText(filename: string, content: string, type: string) {
   URL.revokeObjectURL(url);
 }
 
-function toCsv(rows: Array<Record<string, string | number>>) {
+function toCsv(rows: Array<Record<string, string | number | undefined>>) {
   if (!rows.length) return '';
-  const headers = Object.keys(rows[0]);
-  const escape = (value: string | number) => `"${String(value).replaceAll('"', '""')}"`;
+  const headers = [...new Set(rows.flatMap((row) => Object.keys(row)))];
+  const escape = (value: string | number | undefined) => `"${String(value ?? '').replaceAll('"', '""')}"`;
   return [headers.join(','), ...rows.map((row) => headers.map((header) => escape(row[header] ?? '')).join(','))].join('\n');
 }
 
@@ -147,6 +190,68 @@ function truncate(value: string, limit = 220) {
   return value.length > limit ? `${value.slice(0, limit - 3)}...` : value;
 }
 
+function escapeRegExp(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function uniqueValues(values: string[]) {
+  return [...new Set(values.map((value) => value.trim()).filter(Boolean))];
+}
+
+function codeSearchTerms(code: Code) {
+  const source = `${code.label} ${code.description ?? ''}`;
+  const phraseTerms = [code.label, ...(code.description?.match(/"([^"]+)"/g)?.map((term) => term.replaceAll('"', '')) ?? [])];
+  const wordTerms = source
+    .split(/[,\s;:()[\]{}'"“”‘’、。！？!?.]+/u)
+    .map((term) => term.trim())
+    .filter((term) => term.length >= 3);
+  return uniqueValues([...phraseTerms, ...wordTerms]).slice(0, 12);
+}
+
+function sentenceRange(content: string, start: number, end: number) {
+  const leftBoundary = Math.max(
+    content.lastIndexOf('\n', start),
+    content.lastIndexOf('.', start),
+    content.lastIndexOf('!', start),
+    content.lastIndexOf('?', start),
+    content.lastIndexOf('。', start),
+    content.lastIndexOf('！', start),
+    content.lastIndexOf('？', start),
+  );
+  const rightCandidates = ['\n', '.', '!', '?', '。', '！', '？']
+    .map((marker) => content.indexOf(marker, end))
+    .filter((index) => index >= 0);
+  const rightBoundary = rightCandidates.length ? Math.min(...rightCandidates) + 1 : content.length;
+  const safeStart = Math.max(0, leftBoundary >= 0 ? leftBoundary + 1 : start - 100);
+  const safeEnd = Math.min(content.length, rightBoundary - safeStart > 360 ? end + 120 : rightBoundary);
+  return clampRange(safeStart, safeEnd, content.length);
+}
+
+function rangesOverlap(aStart: number, aEnd: number, bStart: number, bEnd: number) {
+  return aStart < bEnd && bStart < aEnd;
+}
+
+function mergeRanges(ranges: Array<{ start: number; end: number }>) {
+  const sorted = ranges
+    .map((range) => ({ start: Math.max(0, range.start), end: Math.max(0, range.end) }))
+    .filter((range) => range.end > range.start)
+    .sort((a, b) => a.start - b.start);
+  const merged: Array<{ start: number; end: number }> = [];
+  sorted.forEach((range) => {
+    const last = merged.at(-1);
+    if (!last || range.start > last.end) {
+      merged.push({ ...range });
+      return;
+    }
+    last.end = Math.max(last.end, range.end);
+  });
+  return merged;
+}
+
+function formatPercent(value: number) {
+  return `${(value * 100).toFixed(1)}%`;
+}
+
 function QdaTab({ documents }: Props) {
   const { t } = useTranslation();
   const textRef = useRef<HTMLTextAreaElement>(null);
@@ -185,6 +290,11 @@ function QdaTab({ documents }: Props) {
   const [editCodeIds, setEditCodeIds] = useState<string[]>([]);
   const [codebookImportMessage, setCodebookImportMessage] = useState('');
   const [annotationImportMessage, setAnnotationImportMessage] = useState('');
+  const [autoCodeSuggestions, setAutoCodeSuggestions] = useState<AutoCodeSuggestion[]>([]);
+  const [autoCodeMessage, setAutoCodeMessage] = useState('');
+  const [minConfidence, setMinConfidence] = useState(0.62);
+  const [suggestionLimit, setSuggestionLimit] = useState(80);
+  const [caseDimension, setCaseDimension] = useState<CaseDimension>('category');
 
   const selectedDocument = useMemo(
     () => documents.find((document) => document.id === documentId) ?? documents[0],
@@ -251,6 +361,181 @@ function QdaTab({ documents }: Props) {
       })),
     [annotations, codes, documents],
   );
+
+  const coverageRows = useMemo<CoverageRow[]>(
+    () =>
+      documents.map((document) => {
+        const documentAnnotations = annotations.filter((annotation) => annotation.documentId === document.id);
+        const codedCharacters = mergeRanges(documentAnnotations.map((annotation) => ({ start: annotation.start, end: annotation.end })))
+          .reduce((sum, range) => sum + Math.max(0, range.end - range.start), 0);
+        return {
+          documentId: document.id,
+          filename: document.filename,
+          annotationCount: documentAnnotations.length,
+          distinctCodeCount: new Set(documentAnnotations.flatMap((annotation) => annotation.codeIds)).size,
+          codedCharacters,
+          coverage: document.content.length ? codedCharacters / document.content.length : 0,
+        };
+      }),
+    [annotations, documents],
+  );
+
+  const cooccurrenceRows = useMemo<CooccurrenceRow[]>(() => {
+    const pairCounts = new Map<string, number>();
+    const codeById = new Map(codes.map((code) => [code.id, code]));
+    const addPair = (leftId: string, rightId: string) => {
+      if (leftId === rightId) return;
+      const [sourceId, targetId] = [leftId, rightId].sort();
+      pairCounts.set(`${sourceId}\u0000${targetId}`, (pairCounts.get(`${sourceId}\u0000${targetId}`) ?? 0) + 1);
+    };
+
+    annotations.forEach((annotation) => {
+      const ids = [...new Set(annotation.codeIds)].filter((codeId) => codeById.has(codeId));
+      ids.forEach((leftId, leftIndex) => ids.slice(leftIndex + 1).forEach((rightId) => addPair(leftId, rightId)));
+    });
+
+    documents.forEach((document) => {
+      const documentAnnotations = annotations.filter((annotation) => annotation.documentId === document.id);
+      documentAnnotations.forEach((left, leftIndex) => {
+        documentAnnotations.slice(leftIndex + 1).forEach((right) => {
+          const gap = Math.max(0, Math.max(left.start, right.start) - Math.min(left.end, right.end));
+          if (!rangesOverlap(left.start, left.end, right.start, right.end) && gap > 160) return;
+          left.codeIds.forEach((leftId) => right.codeIds.forEach((rightId) => addPair(leftId, rightId)));
+        });
+      });
+    });
+
+    return [...pairCounts.entries()]
+      .flatMap(([key, count]) => {
+        const [sourceId, targetId] = key.split('\u0000');
+        const source = codeById.get(sourceId);
+        const target = codeById.get(targetId);
+        if (!source || !target) return [];
+        return [{
+          sourceId,
+          sourceLabel: source.label,
+          sourceColor: source.color,
+          targetId,
+          targetLabel: target.label,
+          targetColor: target.color,
+          count,
+        }];
+      })
+      .sort((a, b) => b.count - a.count || a.sourceLabel.localeCompare(b.sourceLabel));
+  }, [annotations, codes, documents]);
+
+  const cooccurrenceMatrix = useMemo(() => {
+    const activeCodeIds = new Set(cooccurrenceRows.flatMap((row) => [row.sourceId, row.targetId]));
+    const matrixCodes = codes.filter((code) => activeCodeIds.has(code.id)).slice(0, 12);
+    const pairCounts = new Map<string, number>();
+    cooccurrenceRows.forEach((row) => {
+      pairCounts.set(`${row.sourceId}\u0000${row.targetId}`, row.count);
+      pairCounts.set(`${row.targetId}\u0000${row.sourceId}`, row.count);
+    });
+    return {
+      codes: matrixCodes,
+      counts: pairCounts,
+      max: Math.max(1, ...cooccurrenceRows.map((row) => row.count)),
+    };
+  }, [codes, cooccurrenceRows]);
+
+  const corpusCoverage = useMemo(() => {
+    const codedCharacters = coverageRows.reduce((sum, row) => sum + row.codedCharacters, 0);
+    const totalCharacters = documents.reduce((sum, document) => sum + document.content.length, 0);
+    return totalCharacters ? codedCharacters / totalCharacters : 0;
+  }, [coverageRows, documents]);
+
+  const caseMatrix = useMemo(() => {
+    const caseMap = new Map<string, CorpusDocument[]>();
+    documents.forEach((document) => {
+      const values =
+        caseDimension === 'tag'
+          ? document.metadata.tags.length ? document.metadata.tags : [t('qda.uncategorized')]
+          : [String(document.metadata[caseDimension] ?? '').trim() || t('qda.uncategorized')];
+      values.forEach((value) => caseMap.set(value, [...(caseMap.get(value) ?? []), document]));
+    });
+
+    return [...caseMap.entries()]
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([caseName, caseDocuments]) => {
+        const documentIds = new Set(caseDocuments.map((document) => document.id));
+        const caseAnnotations = annotations.filter((annotation) => documentIds.has(annotation.documentId));
+        const counts = codes.map((code) => ({
+          code,
+          count: caseAnnotations.filter((annotation) => annotation.codeIds.includes(code.id)).length,
+        }));
+        return {
+          caseName,
+          documentCount: caseDocuments.length,
+          counts,
+        };
+      });
+  }, [annotations, caseDimension, codes, documents, t]);
+
+  const auditFindings = useMemo<AuditFinding[]>(() => {
+    const findings: AuditFinding[] = [];
+    const uncodedDocuments = coverageRows.filter((row) => row.annotationCount === 0);
+    const orphanCodes = codeSummaries.filter((summary) => summary.annotationCount === 0);
+    const annotationsWithoutMemo = annotations.filter((annotation) => !annotation.memo?.trim());
+    const longAnnotations = annotations.filter((annotation) => annotation.end - annotation.start > 1200);
+    let overlapCount = 0;
+    documents.forEach((document) => {
+      const documentAnnotations = annotations.filter((annotation) => annotation.documentId === document.id);
+      documentAnnotations.forEach((left, leftIndex) => {
+        documentAnnotations.slice(leftIndex + 1).forEach((right) => {
+          if (rangesOverlap(left.start, left.end, right.start, right.end)) overlapCount += 1;
+        });
+      });
+    });
+
+    if (!documents.length) {
+      findings.push({ severity: 'info', issue: t('qda.auditNoDocuments'), detail: t('qda.auditNoDocumentsDetail'), fix: t('qda.auditNoDocumentsFix') });
+    }
+    if (uncodedDocuments.length) {
+      findings.push({
+        severity: 'warning',
+        issue: t('qda.auditUncodedDocuments'),
+        detail: t('qda.auditUncodedDocumentsDetail', { count: uncodedDocuments.length }),
+        fix: t('qda.auditUncodedDocumentsFix'),
+      });
+    }
+    if (orphanCodes.length) {
+      findings.push({
+        severity: 'info',
+        issue: t('qda.auditOrphanCodes'),
+        detail: t('qda.auditOrphanCodesDetail', { count: orphanCodes.length }),
+        fix: t('qda.auditOrphanCodesFix'),
+      });
+    }
+    if (annotationsWithoutMemo.length > Math.max(3, annotations.length * 0.65)) {
+      findings.push({
+        severity: 'info',
+        issue: t('qda.auditMissingMemos'),
+        detail: t('qda.auditMissingMemosDetail', { count: annotationsWithoutMemo.length }),
+        fix: t('qda.auditMissingMemosFix'),
+      });
+    }
+    if (overlapCount) {
+      findings.push({
+        severity: 'warning',
+        issue: t('qda.auditOverlaps'),
+        detail: t('qda.auditOverlapsDetail', { count: overlapCount }),
+        fix: t('qda.auditOverlapsFix'),
+      });
+    }
+    if (longAnnotations.length) {
+      findings.push({
+        severity: 'info',
+        issue: t('qda.auditLongAnnotations'),
+        detail: t('qda.auditLongAnnotationsDetail', { count: longAnnotations.length }),
+        fix: t('qda.auditLongAnnotationsFix'),
+      });
+    }
+    if (!findings.length) {
+      findings.push({ severity: 'ok', issue: t('qda.auditOk'), detail: t('qda.auditOkDetail'), fix: t('qda.auditOkFix') });
+    }
+    return findings;
+  }, [annotations, codeSummaries, coverageRows, documents, t]);
 
   const descendantIds = useMemo(() => {
     const childrenByParent = new Map<string, string[]>();
@@ -322,6 +607,40 @@ function QdaTab({ documents }: Props) {
         };
       });
 
+  const insightRows = () => [
+    ...coverageRows.map((row) => ({
+      section: 'coverage',
+      document: row.filename,
+      annotation_count: row.annotationCount,
+      distinct_codes: row.distinctCodeCount,
+      coded_characters: row.codedCharacters,
+      coverage_percent: (row.coverage * 100).toFixed(2),
+    })),
+    ...cooccurrenceRows.map((row) => ({
+      section: 'code_cooccurrence',
+      source_code: row.sourceLabel,
+      target_code: row.targetLabel,
+      count: row.count,
+    })),
+    ...caseMatrix.flatMap((row) =>
+      row.counts.map(({ code, count }) => ({
+        section: 'case_matrix',
+        case_dimension: caseDimension,
+        case: row.caseName,
+        document_count: row.documentCount,
+        code: code.label,
+        count,
+      })),
+    ),
+    ...auditFindings.map((finding) => ({
+      section: 'quality_audit',
+      severity: finding.severity,
+      issue: finding.issue,
+      detail: finding.detail,
+      fix: finding.fix,
+    })),
+  ];
+
   const exportCodebookCsv = () => {
     const rows = codebookRows();
     if (!rows.length) return;
@@ -345,6 +664,19 @@ function QdaTab({ documents }: Props) {
       title: 'Annotation CSV exported',
       detail: `${rows.length} annotation row(s) were exported.`,
       data: { rowCount: rows.length, documentCount: documents.length },
+    });
+  };
+
+  const exportInsightsCsv = () => {
+    const rows = insightRows();
+    if (!rows.length) return;
+    downloadText('bki-qda-intelligence.csv', toCsv(rows), 'text/csv;charset=utf-8');
+    addLog({
+      level: 'success',
+      stage: 'qda.intelligence',
+      title: 'QDA intelligence CSV exported',
+      detail: `${rows.length} insight row(s) were exported.`,
+      data: { rowCount: rows.length, caseDimension },
     });
   };
 
@@ -386,6 +718,96 @@ function QdaTab({ documents }: Props) {
         data: { filename: file.name },
       });
     }
+  };
+
+  const generateAutoCodeSuggestions = () => {
+    const existingKeys = new Set(
+      annotations.flatMap((annotation) =>
+        annotation.codeIds.map((codeId) => `${annotation.documentId}\u0000${codeId}\u0000${annotation.start}\u0000${annotation.end}`),
+      ),
+    );
+    const suggestions: AutoCodeSuggestion[] = [];
+    const seen = new Set<string>();
+
+    codes.forEach((code) => {
+      codeSearchTerms(code).forEach((term) => {
+        const expression = new RegExp(escapeRegExp(term), term.match(/^[\w -]+$/i) ? 'giu' : 'gu');
+        documents.forEach((document) => {
+          let match: RegExpExecArray | null;
+          while ((match = expression.exec(document.content)) && suggestions.length < suggestionLimit * 3) {
+            const matchStart = match.index;
+            const matchEnd = match.index + match[0].length;
+            const existingOverlap = annotations.some(
+              (annotation) =>
+                annotation.documentId === document.id &&
+                annotation.codeIds.includes(code.id) &&
+                rangesOverlap(annotation.start, annotation.end, matchStart, matchEnd),
+            );
+            if (existingOverlap) continue;
+            const { safeStart, safeEnd } = sentenceRange(document.content, matchStart, matchEnd);
+            const key = `${document.id}\u0000${code.id}\u0000${safeStart}\u0000${safeEnd}`;
+            if (seen.has(key) || existingKeys.has(key)) continue;
+            seen.add(key);
+            const exactLabel = term.toLocaleLowerCase() === code.label.toLocaleLowerCase();
+            const confidence = Math.min(0.99, (exactLabel ? 0.82 : term.includes(' ') ? 0.74 : 0.58) + Math.min(0.16, term.length / 90));
+            if (confidence < minConfidence) continue;
+            suggestions.push({
+              id: key,
+              documentId: document.id,
+              documentName: document.filename,
+              codeId: code.id,
+              codeLabel: code.label,
+              codeColor: code.color,
+              start: safeStart,
+              end: safeEnd,
+              term,
+              excerpt: truncate(document.content.slice(safeStart, safeEnd), 260),
+              confidence,
+            });
+          }
+        });
+      });
+    });
+
+    const nextSuggestions = suggestions
+      .sort((left, right) => right.confidence - left.confidence || left.documentName.localeCompare(right.documentName))
+      .slice(0, suggestionLimit);
+    setAutoCodeSuggestions(nextSuggestions);
+    setAutoCodeMessage(t('qda.suggestionsGenerated', { count: nextSuggestions.length }));
+    addLog({
+      level: nextSuggestions.length ? 'success' : 'warning',
+      stage: 'qda.auto_code',
+      title: 'Auto-code suggestions generated',
+      detail: `${nextSuggestions.length} suggestion(s) generated from code labels and descriptions.`,
+      data: {
+        suggestionCount: nextSuggestions.length,
+        minConfidence,
+        suggestionLimit,
+        codeCount: codes.length,
+        documentCount: documents.length,
+      },
+    });
+  };
+
+  const suggestionToAnnotation = (suggestion: AutoCodeSuggestion): Omit<Annotation, 'id'> => ({
+    documentId: suggestion.documentId,
+    start: suggestion.start,
+    end: suggestion.end,
+    codeIds: [suggestion.codeId],
+    memo: t('qda.autoCodeMemo', { term: suggestion.term, confidence: Math.round(suggestion.confidence * 100) }),
+  });
+
+  const applyAutoCodeSuggestion = (suggestion: AutoCodeSuggestion) => {
+    addAnnotation(suggestionToAnnotation(suggestion));
+    setAutoCodeSuggestions((current) => current.filter((item) => item.id !== suggestion.id));
+    setAutoCodeMessage(t('qda.suggestionsApplied', { count: 1 }));
+  };
+
+  const applyAllAutoCodeSuggestions = () => {
+    if (!autoCodeSuggestions.length) return;
+    importAnnotations(autoCodeSuggestions.map(suggestionToAnnotation));
+    setAutoCodeMessage(t('qda.suggestionsApplied', { count: autoCodeSuggestions.length }));
+    setAutoCodeSuggestions([]);
   };
 
   const submitCode = () => {
@@ -809,11 +1231,101 @@ function QdaTab({ documents }: Props) {
 
       <section className="panel span-all">
         <div className="panel-header">
+          <h2 className="section-title">{t('qda.autoCoding')}</h2>
+          <div className="toolbar">
+            <button className="ghost-button" type="button" disabled={!documents.length || !codes.length} onClick={generateAutoCodeSuggestions}>
+              <Sparkles size={16} />
+              {t('qda.generateSuggestions')}
+            </button>
+            <button className="primary-button" type="button" disabled={!autoCodeSuggestions.length} onClick={applyAllAutoCodeSuggestions}>
+              <CheckCircle2 size={16} />
+              {t('qda.applyAllSuggestions')}
+            </button>
+          </div>
+        </div>
+        <div className="panel-body">
+          <span className="muted">{t('qda.autoCodingHint')}</span>
+          <div className="field-grid">
+            <label className="field">
+              <span>{t('qda.minConfidence')}</span>
+              <input
+                className="text-input"
+                type="number"
+                min="0.45"
+                max="0.95"
+                step="0.01"
+                value={minConfidence}
+                onChange={(event) => setMinConfidence(Number(event.target.value))}
+              />
+            </label>
+            <label className="field">
+              <span>{t('qda.suggestionLimit')}</span>
+              <input
+                className="text-input"
+                type="number"
+                min="10"
+                max="250"
+                step="10"
+                value={suggestionLimit}
+                onChange={(event) => setSuggestionLimit(Number(event.target.value))}
+              />
+            </label>
+          </div>
+          {autoCodeMessage && <span className="muted">{autoCodeMessage}</span>}
+          {autoCodeSuggestions.length === 0 ? (
+            <div className="empty-state">{t('qda.noSuggestions')}</div>
+          ) : (
+            <div className="table-wrap">
+              <table className="analysis-table">
+                <thead>
+                  <tr>
+                    <th>{t('qda.document')}</th>
+                    <th>{t('qda.codeLabel')}</th>
+                    <th>{t('qda.confidence')}</th>
+                    <th>{t('qda.range')}</th>
+                    <th>{t('qda.selectedText')}</th>
+                    <th>{t('common.action')}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {autoCodeSuggestions.map((suggestion) => (
+                    <tr key={suggestion.id}>
+                      <td>{suggestion.documentName}</td>
+                      <td>
+                        <span className="code-pill" style={{ borderColor: suggestion.codeColor }}>
+                          <span className="color-chip small" style={{ background: suggestion.codeColor }} />
+                          {suggestion.codeLabel}
+                        </span>
+                      </td>
+                      <td>{Math.round(suggestion.confidence * 100)}%</td>
+                      <td>{suggestion.start}-{suggestion.end}</td>
+                      <td>{suggestion.excerpt}</td>
+                      <td>
+                        <button className="ghost-button" type="button" onClick={() => applyAutoCodeSuggestion(suggestion)}>
+                          <CheckCircle2 size={16} />
+                          {t('qda.applySuggestion')}
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      </section>
+
+      <section className="panel span-all">
+        <div className="panel-header">
           <h2 className="section-title">{t('qda.codeAnalysis')}</h2>
           <div className="toolbar">
             <button className="ghost-button" type="button" disabled={!documents.length || !codes.length} onClick={() => annotationInputRef.current?.click()}>
               <Upload size={16} />
               {t('qda.importAnnotationsCsv')}
+            </button>
+            <button className="ghost-button" type="button" disabled={!insightRows().length} onClick={exportInsightsCsv}>
+              <FileDown size={16} />
+              {t('qda.exportInsightsCsv')}
             </button>
             <button className="ghost-button" type="button" disabled={!codes.length} onClick={exportCodebookCsv}>
               <Download size={16} />
@@ -838,6 +1350,25 @@ function QdaTab({ documents }: Props) {
             }}
           />
           {annotationImportMessage && <span className="muted">{annotationImportMessage}</span>}
+          <div className="insight-grid">
+            <div className="insight-tile">
+              <span>{t('qda.corpusCoverage')}</span>
+              <strong>{formatPercent(corpusCoverage)}</strong>
+            </div>
+            <div className="insight-tile">
+              <span>{t('qda.annotationCount')}</span>
+              <strong>{annotations.length}</strong>
+            </div>
+            <div className="insight-tile">
+              <span>{t('qda.codeCooccurrence')}</span>
+              <strong>{cooccurrenceRows.length}</strong>
+            </div>
+            <div className="insight-tile">
+              <span>{t('qda.auditIssue')}</span>
+              <strong>{auditFindings.filter((finding) => finding.severity !== 'ok').length}</strong>
+            </div>
+          </div>
+
           <div className="table-wrap">
             <table className="analysis-table">
               <thead>
@@ -866,6 +1397,126 @@ function QdaTab({ documents }: Props) {
                 ))}
               </tbody>
             </table>
+          </div>
+
+          <div className="table-wrap">
+            <table className="analysis-table">
+              <thead>
+                <tr>
+                  <th>{t('qda.corpusCoverage')}</th>
+                  <th>{t('qda.annotationCount')}</th>
+                  <th>{t('qda.distinctCodes')}</th>
+                  <th>{t('qda.codedCharacters')}</th>
+                  <th>{t('qda.coverage')}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {coverageRows.map((row) => (
+                  <tr key={row.documentId}>
+                    <td>{row.filename}</td>
+                    <td>{row.annotationCount}</td>
+                    <td>{row.distinctCodeCount}</td>
+                    <td>{row.codedCharacters}</td>
+                    <td>{formatPercent(row.coverage)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          <div className="field-grid">
+            <label className="field">
+              <span>{t('qda.caseDimension')}</span>
+              <select className="select-input" value={caseDimension} onChange={(event) => setCaseDimension(event.target.value as CaseDimension)}>
+                <option value="category">{t('qda.category')}</option>
+                <option value="author">{t('qda.author')}</option>
+                <option value="language">{t('qda.language')}</option>
+                <option value="tag">{t('qda.tag')}</option>
+              </select>
+            </label>
+            <div className="field">
+              <span>{t('qda.coverageSummary')}</span>
+              <div className="selection-preview">
+                <strong>{formatPercent(corpusCoverage)}</strong>
+                <p>{t('qda.coverageSummaryDetail', { documents: documents.length, annotations: annotations.length, codes: codes.length })}</p>
+              </div>
+            </div>
+          </div>
+
+          <div className="table-wrap">
+            <table className="analysis-table">
+              <thead>
+                <tr>
+                  <th>{t('qda.caseMatrix')}</th>
+                  <th>{t('qda.documentCount')}</th>
+                  {codes.map((code) => (
+                    <th key={code.id}>{code.label}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {caseMatrix.map((row) => (
+                  <tr key={row.caseName}>
+                    <td>{row.caseName}</td>
+                    <td>{row.documentCount}</td>
+                    {row.counts.map(({ code, count }) => (
+                      <td key={code.id}>{count}</td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          <div className="table-wrap">
+            <table className="analysis-table heatmap-table" aria-label={t('qda.codeCooccurrence')}>
+              <thead>
+                <tr>
+                  <th>
+                    <BarChart3 size={15} />
+                    {t('qda.codeCooccurrence')}
+                  </th>
+                  {cooccurrenceMatrix.codes.map((code) => (
+                    <th key={code.id}>{code.label}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {cooccurrenceMatrix.codes.length === 0 ? (
+                  <tr>
+                    <td colSpan={Math.max(1, codes.length + 1)}>{t('qda.noCooccurrence')}</td>
+                  </tr>
+                ) : (
+                  cooccurrenceMatrix.codes.map((source) => (
+                    <tr key={source.id}>
+                      <th>{source.label}</th>
+                      {cooccurrenceMatrix.codes.map((target) => {
+                        const value = source.id === target.id ? 0 : (cooccurrenceMatrix.counts.get(`${source.id}\u0000${target.id}`) ?? 0);
+                        const alpha = value ? Math.min(0.9, 0.12 + (value / cooccurrenceMatrix.max) * 0.7) : 0;
+                        return (
+                          <td key={target.id}>
+                            <span className="heatmap-cell" style={{ backgroundColor: value ? `rgba(40, 95, 159, ${alpha})` : '#f7f9fb' }}>
+                              {value || ''}
+                            </span>
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+
+          <div className="audit-list">
+            {auditFindings.map((finding) => (
+              <div className={`audit-row ${finding.severity}`} key={`${finding.issue}-${finding.detail}`}>
+                <span className={`badge ${finding.severity}`}>{t(`qda.auditSeverity_${finding.severity}`)}</span>
+                <strong>{finding.issue}</strong>
+                <span className="muted">{finding.detail}</span>
+                <span>{finding.fix}</span>
+              </div>
+            ))}
           </div>
 
           <div className="table-wrap">
