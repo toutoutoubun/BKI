@@ -16,6 +16,7 @@ import { useAnalysisStore } from '../../store/analysisStore';
 import { useProcessStore } from '../../store/processStore';
 import type { CorpusDocument, KeywordGroup } from '../../types';
 import NlpPanel from './NlpPanel';
+import RStatsPanel from './RStatsPanel';
 import TextMiningPanel from './TextMiningPanel';
 
 interface Props {
@@ -562,6 +563,7 @@ function QuantTab({ documents }: Props) {
           )}
         </div>
       </section>
+      <RStatsPanel documents={documents} />
       <TextMiningPanel documents={documents} />
       <NlpPanel documents={documents} />
     </div>
