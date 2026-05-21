@@ -81,6 +81,40 @@ interface MixedEvidenceRow {
   excerpt: string;
 }
 
+interface ReliabilityRow {
+  codeId: string;
+  codeLabel: string;
+  codeColor: string;
+  documentId: string;
+  documentName: string;
+  units: number;
+  primaryHits: number;
+  reviewerHits: number;
+  agreements: number;
+  disagreements: number;
+  truePositive: number;
+  falsePositive: number;
+  falseNegative: number;
+  trueNegative: number;
+  observedAgreement: number;
+  expectedAgreement: number;
+  kappa: number;
+  precision: number;
+  recall: number;
+  f1: number;
+}
+
+interface DisagreementEvidenceRow {
+  id: string;
+  documentName: string;
+  codeLabel: string;
+  codeColor: string;
+  source: 'primary' | 'reviewer';
+  start: number;
+  end: number;
+  excerpt: string;
+}
+
 type CaseDimension = 'category' | 'author' | 'language' | 'tag';
 type AuditSeverity = 'ok' | 'info' | 'warning';
 
@@ -300,11 +334,73 @@ function formatPercent(value: number) {
   return `${(value * 100).toFixed(1)}%`;
 }
 
+function formatScore(value: number) {
+  return Number.isFinite(value) ? value.toFixed(2) : '0.00';
+}
+
+function reliabilityMetrics(truePositive: number, falsePositive: number, falseNegative: number, trueNegative: number) {
+  const units = truePositive + falsePositive + falseNegative + trueNegative;
+  if (!units) {
+    return {
+      units,
+      agreements: 0,
+      disagreements: 0,
+      observedAgreement: 0,
+      expectedAgreement: 0,
+      kappa: 0,
+      precision: 0,
+      recall: 0,
+      f1: 0,
+    };
+  }
+
+  const agreements = truePositive + trueNegative;
+  const disagreements = falsePositive + falseNegative;
+  const observedAgreement = agreements / units;
+  const primaryYes = (truePositive + falsePositive) / units;
+  const reviewerYes = (truePositive + falseNegative) / units;
+  const primaryNo = (falseNegative + trueNegative) / units;
+  const reviewerNo = (falsePositive + trueNegative) / units;
+  const expectedAgreement = primaryYes * reviewerYes + primaryNo * reviewerNo;
+  const kappa = expectedAgreement === 1 ? (observedAgreement === 1 ? 1 : 0) : (observedAgreement - expectedAgreement) / (1 - expectedAgreement);
+  const precision = truePositive + falsePositive ? truePositive / (truePositive + falsePositive) : 0;
+  const recall = truePositive + falseNegative ? truePositive / (truePositive + falseNegative) : 0;
+  const f1 = precision + recall ? (2 * precision * recall) / (precision + recall) : 0;
+
+  return {
+    units,
+    agreements,
+    disagreements,
+    observedAgreement,
+    expectedAgreement,
+    kappa,
+    precision,
+    recall,
+    f1,
+  };
+}
+
+function annotationPresenceSet(annotations: Annotation[], document: CorpusDocument, codeId: string, unitSize: number) {
+  const units = Math.max(1, Math.ceil(document.content.length / unitSize));
+  const presence = new Set<number>();
+  annotations
+    .filter((annotation) => annotation.documentId === document.id && annotation.codeIds.includes(codeId))
+    .forEach((annotation) => {
+      const { safeStart, safeEnd } = clampRange(annotation.start, annotation.end, document.content.length);
+      if (safeStart === safeEnd) return;
+      const firstUnit = Math.max(0, Math.floor(safeStart / unitSize));
+      const lastUnit = Math.min(units - 1, Math.floor(Math.max(safeStart, safeEnd - 1) / unitSize));
+      for (let unit = firstUnit; unit <= lastUnit; unit += 1) presence.add(unit);
+    });
+  return { units, presence };
+}
+
 function QdaTab({ documents }: Props) {
   const { t } = useTranslation();
   const textRef = useRef<HTMLTextAreaElement>(null);
   const codebookInputRef = useRef<HTMLInputElement>(null);
   const annotationInputRef = useRef<HTMLInputElement>(null);
+  const reviewerInputRef = useRef<HTMLInputElement>(null);
   const keywordGroups = useAnalysisStore((state) => state.keywordGroups);
   const codes = useCodingStore((state) => state.codes);
   const annotations = useCodingStore((state) => state.annotations);
@@ -339,11 +435,14 @@ function QdaTab({ documents }: Props) {
   const [editCodeIds, setEditCodeIds] = useState<string[]>([]);
   const [codebookImportMessage, setCodebookImportMessage] = useState('');
   const [annotationImportMessage, setAnnotationImportMessage] = useState('');
+  const [reviewerImportMessage, setReviewerImportMessage] = useState('');
+  const [reviewerAnnotations, setReviewerAnnotations] = useState<Annotation[]>([]);
   const [autoCodeSuggestions, setAutoCodeSuggestions] = useState<AutoCodeSuggestion[]>([]);
   const [autoCodeMessage, setAutoCodeMessage] = useState('');
   const [minConfidence, setMinConfidence] = useState(0.62);
   const [suggestionLimit, setSuggestionLimit] = useState(80);
   const [caseDimension, setCaseDimension] = useState<CaseDimension>('category');
+  const [reliabilityUnitSize, setReliabilityUnitSize] = useState(240);
 
   const selectedDocument = useMemo(
     () => documents.find((document) => document.id === documentId) ?? documents[0],
@@ -374,6 +473,17 @@ function QdaTab({ documents }: Props) {
   useEffect(() => {
     setEditCodeIds((current) => current.filter((codeId) => codes.some((code) => code.id === codeId)));
   }, [codes]);
+
+  useEffect(() => {
+    setReviewerAnnotations((current) =>
+      current
+        .map((annotation) => ({
+          ...annotation,
+          codeIds: annotation.codeIds.filter((codeId) => codes.some((code) => code.id === codeId)),
+        }))
+        .filter((annotation) => annotation.codeIds.length && documents.some((document) => document.id === annotation.documentId)),
+    );
+  }, [codes, documents]);
 
   const documentAnnotations = useMemo(
     () => annotations.filter((annotation) => annotation.documentId === selectedDocument?.id),
@@ -615,6 +725,114 @@ function QdaTab({ documents }: Props) {
 
   const strongestCodeKeyword = codeKeywordRows[0];
 
+  const reliabilityRows = useMemo<ReliabilityRow[]>(() => {
+    if (!reviewerAnnotations.length) return [];
+    const safeUnitSize = Math.max(80, Math.min(4000, Math.floor(reliabilityUnitSize) || 240));
+    return codes
+      .flatMap((code) =>
+        documents.map((document) => {
+          const primary = annotationPresenceSet(annotations, document, code.id, safeUnitSize);
+          const reviewer = annotationPresenceSet(reviewerAnnotations, document, code.id, safeUnitSize);
+          let truePositive = 0;
+          let falsePositive = 0;
+          let falseNegative = 0;
+          let trueNegative = 0;
+
+          for (let unit = 0; unit < primary.units; unit += 1) {
+            const primaryHasCode = primary.presence.has(unit);
+            const reviewerHasCode = reviewer.presence.has(unit);
+            if (primaryHasCode && reviewerHasCode) truePositive += 1;
+            else if (primaryHasCode) falsePositive += 1;
+            else if (reviewerHasCode) falseNegative += 1;
+            else trueNegative += 1;
+          }
+
+          const metrics = reliabilityMetrics(truePositive, falsePositive, falseNegative, trueNegative);
+          return {
+            codeId: code.id,
+            codeLabel: code.label,
+            codeColor: code.color,
+            documentId: document.id,
+            documentName: document.filename,
+            units: metrics.units,
+            primaryHits: primary.presence.size,
+            reviewerHits: reviewer.presence.size,
+            agreements: metrics.agreements,
+            disagreements: metrics.disagreements,
+            truePositive,
+            falsePositive,
+            falseNegative,
+            trueNegative,
+            observedAgreement: metrics.observedAgreement,
+            expectedAgreement: metrics.expectedAgreement,
+            kappa: metrics.kappa,
+            precision: metrics.precision,
+            recall: metrics.recall,
+            f1: metrics.f1,
+          };
+        }),
+      )
+      .filter((row) => row.primaryHits || row.reviewerHits)
+      .sort((left, right) => left.kappa - right.kappa || right.disagreements - left.disagreements || left.codeLabel.localeCompare(right.codeLabel));
+  }, [annotations, codes, documents, reliabilityUnitSize, reviewerAnnotations]);
+
+  const overallReliability = useMemo(() => {
+    const totals = reliabilityRows.reduce(
+      (sum, row) => ({
+        truePositive: sum.truePositive + row.truePositive,
+        falsePositive: sum.falsePositive + row.falsePositive,
+        falseNegative: sum.falseNegative + row.falseNegative,
+        trueNegative: sum.trueNegative + row.trueNegative,
+      }),
+      { truePositive: 0, falsePositive: 0, falseNegative: 0, trueNegative: 0 },
+    );
+    return reliabilityMetrics(totals.truePositive, totals.falsePositive, totals.falseNegative, totals.trueNegative);
+  }, [reliabilityRows]);
+
+  const disagreementEvidenceRows = useMemo<DisagreementEvidenceRow[]>(() => {
+    if (!reviewerAnnotations.length) return [];
+    const codeById = new Map(codes.map((code) => [code.id, code]));
+    const documentById = new Map(documents.map((document) => [document.id, document]));
+    const buildRows = (sourceAnnotations: Annotation[], comparisonAnnotations: Annotation[], source: 'primary' | 'reviewer') =>
+      sourceAnnotations.flatMap((annotation) => {
+        const document = documentById.get(annotation.documentId);
+        if (!document) return [];
+        return annotation.codeIds.flatMap((codeId) => {
+          const code = codeById.get(codeId);
+          if (!code) return [];
+          const hasAgreement = comparisonAnnotations.some(
+            (candidate) =>
+              candidate.documentId === annotation.documentId &&
+              candidate.codeIds.includes(codeId) &&
+              rangesOverlap(annotation.start, annotation.end, candidate.start, candidate.end),
+          );
+          if (hasAgreement) return [];
+          const { safeStart, safeEnd } = clampRange(annotation.start, annotation.end, document.content.length);
+          const contextStart = Math.max(0, safeStart - 80);
+          const contextEnd = Math.min(document.content.length, safeEnd + 120);
+          return [{
+            id: `${source}\u0000${annotation.id}\u0000${codeId}`,
+            documentName: document.filename,
+            codeLabel: code.label,
+            codeColor: code.color,
+            source,
+            start: safeStart,
+            end: safeEnd,
+            excerpt: truncate(document.content.slice(contextStart, contextEnd), 260),
+          }];
+        });
+      });
+
+    return [...buildRows(annotations, reviewerAnnotations, 'primary'), ...buildRows(reviewerAnnotations, annotations, 'reviewer')]
+      .sort(
+        (left, right) =>
+          left.documentName.localeCompare(right.documentName) ||
+          left.start - right.start ||
+          left.codeLabel.localeCompare(right.codeLabel) ||
+          left.source.localeCompare(right.source),
+      );
+  }, [annotations, codes, documents, reviewerAnnotations]);
+
   const corpusCoverage = useMemo(() => {
     const codedCharacters = coverageRows.reduce((sum, row) => sum + row.codedCharacters, 0);
     const totalCharacters = documents.reduce((sum, document) => sum + document.content.length, 0);
@@ -807,6 +1025,19 @@ function QdaTab({ documents }: Props) {
       documents: row.documentCount,
       terms: row.terms.join('; '),
     })),
+    ...(reviewerAnnotations.length
+      ? [{
+        section: 'intercoder_reliability',
+        unit_size: reliabilityUnitSize,
+        kappa: overallReliability.kappa.toFixed(4),
+        observed_agreement: overallReliability.observedAgreement.toFixed(4),
+        expected_agreement: overallReliability.expectedAgreement.toFixed(4),
+        precision: overallReliability.precision.toFixed(4),
+        recall: overallReliability.recall.toFixed(4),
+        f1: overallReliability.f1.toFixed(4),
+        disagreements: overallReliability.disagreements,
+      }]
+      : []),
     ...caseMatrix.flatMap((row) =>
       row.counts.map(({ code, count }) => ({
         section: 'case_matrix',
@@ -842,6 +1073,52 @@ function QdaTab({ documents }: Props) {
       code: row.codeLabel,
       keyword_group: row.keywordGroupName,
       term: row.term,
+      start: row.start,
+      end: row.end,
+      excerpt: row.excerpt,
+    })),
+  ];
+
+  const reliabilityExportRows = () => [
+    ...(reviewerAnnotations.length
+      ? [{
+        section: 'summary',
+        unit_size: reliabilityUnitSize,
+        kappa: overallReliability.kappa.toFixed(4),
+        observed_agreement: overallReliability.observedAgreement.toFixed(4),
+        expected_agreement: overallReliability.expectedAgreement.toFixed(4),
+        precision: overallReliability.precision.toFixed(4),
+        recall: overallReliability.recall.toFixed(4),
+        f1: overallReliability.f1.toFixed(4),
+        agreements: overallReliability.agreements,
+        disagreements: overallReliability.disagreements,
+      }]
+      : []),
+    ...reliabilityRows.map((row) => ({
+      section: 'code_document_reliability',
+      document: row.documentName,
+      code: row.codeLabel,
+      units: row.units,
+      primary_hits: row.primaryHits,
+      reviewer_hits: row.reviewerHits,
+      agreements: row.agreements,
+      disagreements: row.disagreements,
+      true_positive: row.truePositive,
+      false_positive: row.falsePositive,
+      false_negative: row.falseNegative,
+      true_negative: row.trueNegative,
+      kappa: row.kappa.toFixed(4),
+      observed_agreement: row.observedAgreement.toFixed(4),
+      expected_agreement: row.expectedAgreement.toFixed(4),
+      precision: row.precision.toFixed(4),
+      recall: row.recall.toFixed(4),
+      f1: row.f1.toFixed(4),
+    })),
+    ...disagreementEvidenceRows.map((row) => ({
+      section: 'disagreement_evidence',
+      document: row.documentName,
+      code: row.codeLabel,
+      source: row.source,
       start: row.start,
       end: row.end,
       excerpt: row.excerpt,
@@ -904,6 +1181,24 @@ function QdaTab({ documents }: Props) {
     });
   };
 
+  const exportReliabilityCsv = () => {
+    const rows = reliabilityExportRows();
+    if (!rows.length) return;
+    downloadText('bki-intercoder-reliability.csv', toCsv(rows), 'text/csv;charset=utf-8');
+    addLog({
+      level: 'success',
+      stage: 'qda.reliability',
+      title: 'Intercoder reliability CSV exported',
+      detail: `${rows.length} reliability row(s) were exported.`,
+      data: {
+        rowCount: rows.length,
+        reviewerAnnotations: reviewerAnnotations.length,
+        unitSize: reliabilityUnitSize,
+        kappa: overallReliability.kappa,
+      },
+    });
+  };
+
   const importCodebookCsv = async (file: File) => {
     setCodebookImportMessage('');
     try {
@@ -938,6 +1233,39 @@ function QdaTab({ documents }: Props) {
         level: 'error',
         stage: 'qda.annotations',
         title: 'Annotation CSV import failed',
+        detail: message,
+        data: { filename: file.name },
+      });
+    }
+  };
+
+  const importReviewerAnnotationsCsv = async (file: File) => {
+    setReviewerImportMessage('');
+    try {
+      const importedAnnotations = parseAnnotationCsv(await file.text(), documents, codes);
+      if (!importedAnnotations.length) throw new Error('No valid reviewer annotation rows found.');
+      const importedAt = Date.now();
+      setReviewerAnnotations(
+        importedAnnotations.map((annotation, index) => ({
+          ...annotation,
+          id: `reviewer-${importedAt}-${index}`,
+        })),
+      );
+      setReviewerImportMessage(t('qda.importReviewerSuccess', { count: importedAnnotations.length }));
+      addLog({
+        level: 'success',
+        stage: 'qda.reliability',
+        title: 'Reviewer annotations imported',
+        detail: `${importedAnnotations.length} reviewer annotation row(s) were imported for reliability analysis.`,
+        data: { filename: file.name, annotationCount: importedAnnotations.length },
+      });
+    } catch (caught) {
+      const message = caught instanceof Error ? caught.message : String(caught);
+      setReviewerImportMessage(t('qda.importReviewerError'));
+      addLog({
+        level: 'error',
+        stage: 'qda.reliability',
+        title: 'Reviewer annotation CSV import failed',
         detail: message,
         data: { filename: file.name },
       });
@@ -1547,9 +1875,17 @@ function QdaTab({ documents }: Props) {
               <Upload size={16} />
               {t('qda.importAnnotationsCsv')}
             </button>
+            <button className="ghost-button" type="button" disabled={!documents.length || !codes.length} onClick={() => reviewerInputRef.current?.click()}>
+              <Upload size={16} />
+              {t('qda.importReviewerCsv')}
+            </button>
             <button className="ghost-button" type="button" disabled={!insightRows().length} onClick={exportInsightsCsv}>
               <FileDown size={16} />
               {t('qda.exportInsightsCsv')}
+            </button>
+            <button className="ghost-button" type="button" disabled={!reliabilityExportRows().length} onClick={exportReliabilityCsv}>
+              <FileDown size={16} />
+              {t('qda.exportReliabilityCsv')}
             </button>
             <button className="ghost-button" type="button" disabled={!mixedMethodRows().length} onClick={exportMixedMethodsCsv}>
               <FileDown size={16} />
@@ -1577,7 +1913,19 @@ function QdaTab({ documents }: Props) {
               event.currentTarget.value = '';
             }}
           />
+          <input
+            ref={reviewerInputRef}
+            type="file"
+            accept=".csv,text/csv"
+            hidden
+            onChange={(event) => {
+              const file = event.target.files?.[0];
+              if (file) void importReviewerAnnotationsCsv(file);
+              event.currentTarget.value = '';
+            }}
+          />
           {annotationImportMessage && <span className="muted">{annotationImportMessage}</span>}
+          {reviewerImportMessage && <span className="muted">{reviewerImportMessage}</span>}
           <div className="insight-grid">
             <div className="insight-tile">
               <span>{t('qda.corpusCoverage')}</span>
@@ -1598,6 +1946,14 @@ function QdaTab({ documents }: Props) {
             <div className="insight-tile">
               <span>{t('qda.keywordHits')}</span>
               <strong>{mixedEvidenceRows.length}</strong>
+            </div>
+            <div className="insight-tile">
+              <span>{t('qda.intercoderReliability')}</span>
+              <strong>{reviewerAnnotations.length ? formatScore(overallReliability.kappa) : 'n/a'}</strong>
+            </div>
+            <div className="insight-tile">
+              <span>{t('qda.disagreements')}</span>
+              <strong>{reviewerAnnotations.length ? overallReliability.disagreements : 0}</strong>
             </div>
             <div className="insight-tile">
               <span>{t('qda.auditIssue')}</span>
@@ -1696,6 +2052,34 @@ function QdaTab({ documents }: Props) {
                 </p>
               </div>
             </div>
+            <label className="field">
+              <span>{t('qda.reliabilityUnitSize')}</span>
+              <input
+                className="text-input"
+                type="number"
+                min="80"
+                max="4000"
+                step="40"
+                value={reliabilityUnitSize}
+                onChange={(event) => setReliabilityUnitSize(Number(event.target.value))}
+              />
+            </label>
+            <div className="field">
+              <span>{t('qda.reliabilitySummary')}</span>
+              <div className="selection-preview">
+                <strong>{reviewerAnnotations.length ? `${t('qda.kappa')} ${formatScore(overallReliability.kappa)}` : t('common.none')}</strong>
+                <p>
+                  {reviewerAnnotations.length
+                    ? t('qda.reliabilitySummaryDetail', {
+                      annotations: reviewerAnnotations.length,
+                      agreements: overallReliability.agreements,
+                      disagreements: overallReliability.disagreements,
+                      f1: formatScore(overallReliability.f1),
+                    })
+                    : t('qda.noReviewerAnnotations')}
+                </p>
+              </div>
+            </div>
           </div>
 
           <div className="table-wrap">
@@ -1772,6 +2156,86 @@ function QdaTab({ documents }: Props) {
                       </td>
                       <td>{row.keywordGroupName}</td>
                       <td>{row.term}</td>
+                      <td>{row.start}-{row.end}</td>
+                      <td>{row.excerpt}</td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+
+          <div className="table-wrap">
+            <table className="analysis-table">
+              <thead>
+                <tr>
+                  <th>{t('qda.intercoderReliability')}</th>
+                  <th>{t('qda.document')}</th>
+                  <th>{t('qda.units')}</th>
+                  <th>{t('qda.kappa')}</th>
+                  <th>{t('qda.f1Score')}</th>
+                  <th>{t('qda.agreements')}</th>
+                  <th>{t('qda.disagreements')}</th>
+                  <th>{t('qda.primaryCoderHits')}</th>
+                  <th>{t('qda.reviewerHits')}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {reliabilityRows.length === 0 ? (
+                  <tr>
+                    <td colSpan={9}>{t('qda.noReviewerAnnotations')}</td>
+                  </tr>
+                ) : (
+                  reliabilityRows.slice(0, 80).map((row) => (
+                    <tr key={`${row.codeId}-${row.documentId}`}>
+                      <td>
+                        <span className="code-pill" style={{ borderColor: row.codeColor }}>
+                          <span className="color-chip small" style={{ background: row.codeColor }} />
+                          {row.codeLabel}
+                        </span>
+                      </td>
+                      <td>{row.documentName}</td>
+                      <td>{row.units}</td>
+                      <td>{formatScore(row.kappa)}</td>
+                      <td>{formatScore(row.f1)}</td>
+                      <td>{row.agreements}</td>
+                      <td>{row.disagreements}</td>
+                      <td>{row.primaryHits}</td>
+                      <td>{row.reviewerHits}</td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+
+          <div className="table-wrap">
+            <table className="analysis-table">
+              <thead>
+                <tr>
+                  <th>{t('qda.disagreementEvidence')}</th>
+                  <th>{t('qda.codeLabel')}</th>
+                  <th>{t('qda.disagreementSource')}</th>
+                  <th>{t('qda.range')}</th>
+                  <th>{t('qda.selectedText')}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {disagreementEvidenceRows.length === 0 ? (
+                  <tr>
+                    <td colSpan={5}>{reviewerAnnotations.length ? t('qda.noDisagreementEvidence') : t('qda.noReviewerAnnotations')}</td>
+                  </tr>
+                ) : (
+                  disagreementEvidenceRows.slice(0, 80).map((row) => (
+                    <tr key={row.id}>
+                      <td>{row.documentName}</td>
+                      <td>
+                        <span className="code-pill" style={{ borderColor: row.codeColor }}>
+                          <span className="color-chip small" style={{ background: row.codeColor }} />
+                          {row.codeLabel}
+                        </span>
+                      </td>
+                      <td>{t(row.source === 'primary' ? 'qda.primaryCoder' : 'qda.reviewerCoder')}</td>
                       <td>{row.start}-{row.end}</td>
                       <td>{row.excerpt}</td>
                     </tr>

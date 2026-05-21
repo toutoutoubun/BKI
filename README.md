@@ -38,6 +38,6 @@ The sidecar exposes additional local NLP commands:
 - `get_languages`
 - `get_credits`
 
-The text-mining layer also includes `kwic`, `cooccurrence`, `collocation`, `keyness`, `tfidf`, and `sentiment` for local corpus statistics without leaving BKI. The QDA workspace links coded passages back to keyword groups through a code-keyword matrix, evidence table, and mixed-methods CSV export.
+The text-mining layer also includes `kwic`, `cooccurrence`, `collocation`, `keyness`, `tfidf`, and `sentiment` for local corpus statistics without leaving BKI. The QDA workspace links coded passages back to keyword groups through a code-keyword matrix, evidence table, and mixed-methods CSV export. Reviewer annotation CSVs can also be compared against the primary coding set with Cohen's kappa, F1, disagreement evidence, and reliability CSV export.
 
 Language add-ons are discovered from `~/Documents/BKI/addons/`. See [docs/ADDON_GUIDE.md](docs/ADDON_GUIDE.md).
