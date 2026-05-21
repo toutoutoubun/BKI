@@ -7,22 +7,38 @@ use std::{
     path::PathBuf,
     process::{Command, Stdio},
 };
+use tauri::{path::BaseDirectory, AppHandle, Manager};
 
 fn python_binary() -> String {
-    env::var("BKI_PYTHON").unwrap_or_else(|_| "python3".to_string())
+    env::var("BKI_PYTHON").unwrap_or_else(|_| {
+        if cfg!(windows) {
+            "python".to_string()
+        } else {
+            "python3".to_string()
+        }
+    })
 }
 
-fn python_main_path() -> PathBuf {
+fn python_main_path(app: &AppHandle) -> Result<PathBuf, String> {
     if let Ok(path) = env::var("BKI_PYTHON_MAIN") {
-        return PathBuf::from(path);
+        return Ok(PathBuf::from(path));
     }
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../python/main.py")
+
+    let dev_path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../python/main.py");
+    if dev_path.exists() {
+        return Ok(dev_path);
+    }
+
+    app.path()
+        .resolve("python/main.py", BaseDirectory::Resource)
+        .map_err(|error| format!("failed to resolve bundled Python sidecar: {error}"))
 }
 
 #[tauri::command]
-fn run_python(command: String, payload: Value) -> Result<Value, String> {
+fn run_python(app: AppHandle, command: String, payload: Value) -> Result<Value, String> {
+    let python_main = python_main_path(&app)?;
     let mut child = Command::new(python_binary())
-        .arg(python_main_path())
+        .arg(python_main)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -74,4 +90,3 @@ fn main() {
         .run(tauri::generate_context!())
         .expect("error while running BKI");
 }
-

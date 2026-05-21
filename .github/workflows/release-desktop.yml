@@ -1,0 +1,103 @@
+name: release-desktop
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to create, for example v0.1.0"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  build-release:
+    name: Build ${{ matrix.name }}
+    runs-on: ${{ matrix.platform }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: macOS universal
+            platform: macos-latest
+            rust-targets: "aarch64-apple-darwin,x86_64-apple-darwin"
+            tauri-args: "--target universal-apple-darwin"
+          - name: Linux x64
+            platform: ubuntu-22.04
+            rust-targets: ""
+            tauri-args: ""
+          - name: Windows x64
+            platform: windows-latest
+            rust-targets: ""
+            tauri-args: ""
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Resolve release tag
+        shell: bash
+        run: |
+          if [ "${{ github.ref_type }}" = "tag" ]; then
+            echo "BKI_RELEASE_TAG=${{ github.ref_name }}" >> "$GITHUB_ENV"
+          else
+            echo "BKI_RELEASE_TAG=${{ inputs.tag }}" >> "$GITHUB_ENV"
+          fi
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install Rust targets for macOS universal build
+        if: matrix.rust-targets != ''
+        run: rustup target add aarch64-apple-darwin x86_64-apple-darwin
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Linux system dependencies
+        if: matrix.platform == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Test Python sidecar
+        run: npm run python:test
+
+      - name: Build and upload desktop bundles
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        with:
+          tagName: ${{ env.BKI_RELEASE_TAG }}
+          releaseName: "BKI ${{ env.BKI_RELEASE_TAG }}"
+          releaseBody: |
+            Desktop installers for BKI.
+
+            Notes:
+            - The Python analysis sidecar is bundled as an application resource.
+            - A Python runtime must be available on PATH (`python3` on macOS/Linux, `python` on Windows), or set `BKI_PYTHON`.
+            - macOS notarization and code signing are used automatically when the Apple signing secrets are configured.
+          releaseDraft: true
+          prerelease: ${{ contains(env.BKI_RELEASE_TAG, '-') }}
+          args: ${{ matrix.tauri-args }}

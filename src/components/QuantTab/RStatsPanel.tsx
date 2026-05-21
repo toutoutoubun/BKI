@@ -14,6 +14,7 @@ interface Props {
 
 interface DocumentFrameRow {
   document_id: string;
+  document_order: number;
   document: string;
   category: string;
   author: string;
@@ -42,7 +43,11 @@ interface CorrelationRow {
   left: string;
   right: string;
   pearson: number;
+  pearsonPValue: number;
+  pearsonQValue: number;
   spearman: number;
+  spearmanPValue: number;
+  spearmanQValue: number;
   n: number;
 }
 
@@ -80,11 +85,30 @@ interface ModelRow {
   dfBetween: number;
   dfWithin: number;
   fPValue: number;
+  fQValue: number;
   etaSquared: number;
   omegaSquared: number;
   kruskalH: number;
   kruskalPValue: number;
+  kruskalQValue: number;
   epsilonSquared: number;
+}
+
+interface PairwiseComparisonRow {
+  group: string;
+  factor: FactorDimension;
+  leftLevel: string;
+  rightLevel: string;
+  nLeft: number;
+  nRight: number;
+  leftMean: number;
+  rightMean: number;
+  difference: number;
+  tStatistic: number;
+  df: number;
+  pValue: number;
+  qValue: number;
+  cohenD: number;
 }
 
 const factorDimensions: FactorDimension[] = ['category', 'author', 'language', 'tag'];
@@ -293,6 +317,40 @@ function fPValue(fStatistic: number, dfBetween: number, dfWithin: number) {
   return 1 - regularizedBeta(x, dfBetween / 2, dfWithin / 2);
 }
 
+function studentTPValue(tStatistic: number, df: number) {
+  if (!Number.isFinite(tStatistic) || df <= 0) return 1;
+  const t = Math.abs(tStatistic);
+  if (t === 0) return 1;
+  const x = df / (df + t ** 2);
+  return Math.max(0, Math.min(1, regularizedBeta(x, df / 2, 0.5)));
+}
+
+function correlationPValue(coefficient: number, n: number) {
+  if (!Number.isFinite(coefficient) || n < 3) return 1;
+  if (Math.abs(coefficient) >= 1) return 0;
+  const df = n - 2;
+  const t = coefficient * Math.sqrt(df / (1 - coefficient ** 2));
+  return studentTPValue(t, df);
+}
+
+function pAdjustBH(pValues: number[]) {
+  const ranked = pValues
+    .map((pValue, index) => ({
+      index,
+      pValue: Number.isFinite(pValue) ? Math.max(0, Math.min(1, pValue)) : 1,
+    }))
+    .sort((left, right) => left.pValue - right.pValue);
+  const adjusted = Array(pValues.length).fill(1);
+  let previous = 1;
+  for (let cursor = ranked.length - 1; cursor >= 0; cursor -= 1) {
+    const rank = cursor + 1;
+    const value = Math.min(previous, (ranked[cursor].pValue * ranked.length) / rank);
+    previous = value;
+    adjusted[ranked[cursor].index] = Math.min(1, value);
+  }
+  return adjusted;
+}
+
 function sanitizeColumnName(value: string) {
   const cleaned = value.trim().replace(/[^\p{L}\p{M}\p{N}_]+/gu, '_').replace(/^_+|_+$/g, '');
   return cleaned || 'group';
@@ -347,6 +405,29 @@ descriptives <- df |>
 cor_pearson <- cor(df[keyword_cols], use = "pairwise.complete.obs", method = "pearson")
 cor_spearman <- cor(df[keyword_cols], use = "pairwise.complete.obs", method = "spearman")
 
+correlation_tests <- if (length(keyword_cols) >= 2) {
+  combn(keyword_cols, 2, simplify = FALSE) |>
+    lapply(function(pair) {
+      pearson_test <- cor.test(df[[pair[1]]], df[[pair[2]]], method = "pearson")
+      spearman_test <- suppressWarnings(cor.test(df[[pair[1]]], df[[pair[2]]], method = "spearman", exact = FALSE))
+      data.frame(
+        left = pair[1],
+        right = pair[2],
+        pearson = unname(pearson_test$estimate),
+        pearson_p = pearson_test$p.value,
+        spearman = unname(spearman_test$estimate),
+        spearman_p = spearman_test$p.value
+      )
+    }) |>
+    bind_rows() |>
+    mutate(
+      pearson_q = p.adjust(pearson_p, method = "BH"),
+      spearman_q = p.adjust(spearman_p, method = "BH")
+    )
+} else {
+  data.frame()
+}
+
 long <- df |>
   pivot_longer(all_of(keyword_cols), names_to = "keyword_group", values_to = "count")
 
@@ -386,6 +467,20 @@ kruskal_models <- lapply(keyword_cols, function(column) {
   )
 }) |> bind_rows()
 
+pairwise_models <- lapply(keyword_cols, function(column) {
+  if (dplyr::n_distinct(df[["${factorDimension}"]]) < 2) return(data.frame())
+  test <- pairwise.t.test(df[[column]], df[["${factorDimension}"]], p.adjust.method = "BH")
+  as.data.frame(as.table(test$p.value)) |>
+    filter(!is.na(Freq)) |>
+    transmute(
+      keyword_group = column,
+      factor = "${factorDimension}",
+      left_level = Var1,
+      right_level = Var2,
+      q_value = Freq
+    )
+}) |> bind_rows()
+
 long_tidy <- long |>
   group_by(keyword_group) |>
   mutate(
@@ -398,10 +493,12 @@ long_tidy <- long |>
 write_csv(descriptives, "bki-r-descriptives.csv")
 write_csv(as.data.frame(cor_pearson), "bki-r-correlation-pearson.csv")
 write_csv(as.data.frame(cor_spearman), "bki-r-correlation-spearman.csv")
+write_csv(correlation_tests, "bki-r-correlation-tests.csv")
 write_csv(category_models, "bki-r-category-models.csv")
 write_csv(trend_models, "bki-r-trends.csv")
 write_csv(anova_models, "bki-r-anova.csv")
 write_csv(kruskal_models, "bki-r-kruskal.csv")
+write_csv(pairwise_models, "bki-r-pairwise-tests.csv")
 write_csv(long_tidy, "bki-r-long-tidy.csv")
 `;
 }
@@ -426,10 +523,11 @@ function RStatsPanel({ documents }: Props) {
 
   const documentFrame = useMemo<DocumentFrameRow[]>(
     () => {
-      const baseRows = documents.map((document) => {
+      const baseRows = documents.map((document, index) => {
         const words = wordCount(document.content);
         const row: DocumentFrameRow = {
           document_id: document.id,
+          document_order: index + 1,
           document: document.filename,
           category: document.metadata.category || 'unknown',
           author: document.metadata.author || 'unknown',
@@ -489,21 +587,29 @@ function RStatsPanel({ documents }: Props) {
   );
 
   const correlationRows = useMemo<CorrelationRow[]>(() => {
-    const rows: CorrelationRow[] = [];
+    const rows: Array<Omit<CorrelationRow, 'pearsonQValue' | 'spearmanQValue'>> = [];
     activeGroups.forEach((left, leftIndex) => {
       activeGroups.slice(leftIndex + 1).forEach((right) => {
         const leftCounts = documentFrame.map((row) => Number(row[`${left.column}_count`] ?? 0));
         const rightCounts = documentFrame.map((row) => Number(row[`${right.column}_count`] ?? 0));
+        const pearsonValue = pearson(leftCounts, rightCounts);
+        const spearmanValue = spearman(leftCounts, rightCounts);
         rows.push({
           left: left.name,
           right: right.name,
-          pearson: pearson(leftCounts, rightCounts),
-          spearman: spearman(leftCounts, rightCounts),
+          pearson: pearsonValue,
+          pearsonPValue: correlationPValue(pearsonValue, documentFrame.length),
+          spearman: spearmanValue,
+          spearmanPValue: correlationPValue(spearmanValue, documentFrame.length),
           n: documentFrame.length,
         });
       });
     });
-    return rows.sort((left, right) => Math.abs(right.pearson) - Math.abs(left.pearson));
+    const pearsonQValues = pAdjustBH(rows.map((row) => row.pearsonPValue));
+    const spearmanQValues = pAdjustBH(rows.map((row) => row.spearmanPValue));
+    return rows
+      .map((row, index) => ({ ...row, pearsonQValue: pearsonQValues[index], spearmanQValue: spearmanQValues[index] }))
+      .sort((left, right) => Math.abs(right.pearson) - Math.abs(left.pearson));
   }, [activeGroups, documentFrame]);
 
   const categoryEffectRows = useMemo<CategoryEffectRow[]>(() => {
@@ -564,7 +670,7 @@ function RStatsPanel({ documents }: Props) {
   }, [activeGroups, documentFrame, documents, factorDimension]);
 
   const modelRows = useMemo<ModelRow[]>(() => {
-    const rows: ModelRow[] = [];
+    const rows: Array<Omit<ModelRow, 'fQValue' | 'kruskalQValue'>> = [];
     activeGroups.forEach((group) => {
       const observations = documents.flatMap((document) =>
         factorValues(document, factorDimension).map((level) => ({
@@ -626,7 +732,66 @@ function RStatsPanel({ documents }: Props) {
         epsilonSquared,
       });
     });
-    return rows.sort((left, right) => left.fPValue - right.fPValue || right.etaSquared - left.etaSquared);
+    const fQValues = pAdjustBH(rows.map((row) => row.fPValue));
+    const kruskalQValues = pAdjustBH(rows.map((row) => row.kruskalPValue));
+    return rows
+      .map((row, index) => ({ ...row, fQValue: fQValues[index], kruskalQValue: kruskalQValues[index] }))
+      .sort((left, right) => left.fQValue - right.fQValue || left.fPValue - right.fPValue || right.etaSquared - left.etaSquared);
+  }, [activeGroups, documentFrame, documents, factorDimension]);
+
+  const pairwiseRows = useMemo<PairwiseComparisonRow[]>(() => {
+    const rows: Array<Omit<PairwiseComparisonRow, 'qValue'>> = [];
+    activeGroups.forEach((group) => {
+      const observations = documents.flatMap((document) =>
+        factorValues(document, factorDimension).map((level) => ({
+          level,
+          count: Number(documentFrame.find((row) => row.document_id === document.id)?.[`${group.column}_count`] ?? 0),
+        })),
+      );
+      const levels = [...new Set(observations.map((item) => item.level))].sort();
+      levels.forEach((leftLevel, leftIndex) => {
+        levels.slice(leftIndex + 1).forEach((rightLevel) => {
+          const leftValues = observations.filter((item) => item.level === leftLevel).map((item) => item.count);
+          const rightValues = observations.filter((item) => item.level === rightLevel).map((item) => item.count);
+          if (!leftValues.length || !rightValues.length) return;
+          const leftMean = mean(leftValues);
+          const rightMean = mean(rightValues);
+          const difference = leftMean - rightMean;
+          const leftVariance = standardDeviation(leftValues) ** 2;
+          const rightVariance = standardDeviation(rightValues) ** 2;
+          const leftTerm = leftValues.length > 1 ? leftVariance / leftValues.length : 0;
+          const rightTerm = rightValues.length > 1 ? rightVariance / rightValues.length : 0;
+          const standardError = Math.sqrt(leftTerm + rightTerm);
+          const dfNumerator = (leftTerm + rightTerm) ** 2;
+          const dfDenominator =
+            (leftValues.length > 1 ? leftTerm ** 2 / (leftValues.length - 1) : 0) +
+            (rightValues.length > 1 ? rightTerm ** 2 / (rightValues.length - 1) : 0);
+          const df = dfDenominator ? dfNumerator / dfDenominator : Math.max(1, leftValues.length + rightValues.length - 2);
+          const tStatistic = standardError ? difference / standardError : difference === 0 ? 0 : Math.sign(difference) * 1e12;
+          const pooledDf = leftValues.length + rightValues.length - 2;
+          const pooledSd = pooledDf > 0 ? Math.sqrt(((leftValues.length - 1) * leftVariance + (rightValues.length - 1) * rightVariance) / pooledDf) : 0;
+          rows.push({
+            group: group.name,
+            factor: factorDimension,
+            leftLevel,
+            rightLevel,
+            nLeft: leftValues.length,
+            nRight: rightValues.length,
+            leftMean,
+            rightMean,
+            difference,
+            tStatistic,
+            df,
+            pValue: standardError ? studentTPValue(tStatistic, df) : difference === 0 ? 1 : 0,
+            cohenD: pooledSd ? difference / pooledSd : 0,
+          });
+        });
+      });
+    });
+    const qValues = pAdjustBH(rows.map((row) => row.pValue));
+    return rows
+      .map((row, index) => ({ ...row, qValue: qValues[index] }))
+      .sort((left, right) => left.qValue - right.qValue || Math.abs(right.cohenD) - Math.abs(left.cohenD));
   }, [activeGroups, documentFrame, documents, factorDimension]);
 
   const trendRows = useMemo<TrendRow[]>(() => {
@@ -661,12 +826,17 @@ function RStatsPanel({ documents }: Props) {
   const strongestEffect = categoryEffectRows[0];
   const strongestTrend = trendRows[0];
   const strongestModel = modelRows[0];
+  const fdrSignalCount =
+    modelRows.filter((row) => Math.min(row.fQValue, row.kruskalQValue) < 0.05).length +
+    pairwiseRows.filter((row) => row.qValue < 0.05).length +
+    correlationRows.filter((row) => Math.min(row.pearsonQValue, row.spearmanQValue) < 0.05).length;
   const hasData = documentFrame.length > 0 && activeGroups.length > 0;
 
   const tidyRows = () =>
     documentFrame.flatMap((row) =>
       activeGroups.map((group) => ({
         document_id: row.document_id,
+        document_order: row.document_order,
         document: row.document,
         category: row.category,
         author: row.author,
@@ -703,7 +873,11 @@ function RStatsPanel({ documents }: Props) {
       left: row.left,
       right: row.right,
       pearson: row.pearson,
+      pearson_p_value: row.pearsonPValue,
+      pearson_q_value: row.pearsonQValue,
       spearman: row.spearman,
+      spearman_p_value: row.spearmanPValue,
+      spearman_q_value: row.spearmanQValue,
       n: row.n,
     })),
     ...categoryEffectRows.map((row) => ({
@@ -731,11 +905,30 @@ function RStatsPanel({ documents }: Props) {
       df_between: row.dfBetween,
       df_within: row.dfWithin,
       f_p_value: row.fPValue,
+      f_q_value: row.fQValue,
       eta_squared: row.etaSquared,
       omega_squared: row.omegaSquared,
       kruskal_h: row.kruskalH,
       kruskal_p_value: row.kruskalPValue,
+      kruskal_q_value: row.kruskalQValue,
       epsilon_squared: row.epsilonSquared,
+    })),
+    ...pairwiseRows.map((row) => ({
+      section: 'pairwise_contrast',
+      group: row.group,
+      factor: row.factor,
+      left_level: row.leftLevel,
+      right_level: row.rightLevel,
+      n_left: row.nLeft,
+      n_right: row.nRight,
+      left_mean: row.leftMean,
+      right_mean: row.rightMean,
+      difference: row.difference,
+      t_statistic: row.tStatistic,
+      df: row.df,
+      p_value: row.pValue,
+      q_value: row.qValue,
+      cohen_d: row.cohenD,
     })),
     ...trendRows.map((row) => ({
       section: 'trend',
@@ -847,7 +1040,11 @@ function RStatsPanel({ documents }: Props) {
               </div>
               <div className="insight-tile">
                 <span>{t('quant.strongestModel')}</span>
-                <strong>{strongestModel ? formatNumber(strongestModel.fPValue, 3) : 'n/a'}</strong>
+                <strong>{strongestModel ? formatNumber(Math.min(strongestModel.fQValue, strongestModel.kruskalQValue), 3) : 'n/a'}</strong>
+              </div>
+              <div className="insight-tile">
+                <span>{t('quant.fdrSignals')}</span>
+                <strong>{fdrSignalCount}</strong>
               </div>
               <div className="insight-tile">
                 <span>{t('quant.strongestTrend')}</span>
@@ -884,10 +1081,12 @@ function RStatsPanel({ documents }: Props) {
                     <th>{t('quant.levels')}</th>
                     <th>F</th>
                     <th>p</th>
+                    <th>{t('quant.adjustedP')}</th>
                     <th>η²</th>
                     <th>ω²</th>
                     <th>H</th>
                     <th>{t('quant.kruskalP')}</th>
+                    <th>{t('quant.adjustedP')}</th>
                     <th>ε²</th>
                   </tr>
                 </thead>
@@ -899,10 +1098,12 @@ function RStatsPanel({ documents }: Props) {
                       <td>{row.levels}</td>
                       <td>{formatNumber(row.fStatistic)}</td>
                       <td>{formatNumber(row.fPValue, 4)}</td>
+                      <td>{formatNumber(row.fQValue, 4)}</td>
                       <td>{formatNumber(row.etaSquared)}</td>
                       <td>{formatNumber(row.omegaSquared)}</td>
                       <td>{formatNumber(row.kruskalH)}</td>
                       <td>{formatNumber(row.kruskalPValue, 4)}</td>
+                      <td>{formatNumber(row.kruskalQValue, 4)}</td>
                       <td>{formatNumber(row.epsilonSquared)}</td>
                     </tr>
                   ))}
@@ -949,22 +1150,73 @@ function RStatsPanel({ documents }: Props) {
                   <tr>
                     <th>{t('quant.correlation')}</th>
                     <th>{t('quant.pearson')}</th>
+                    <th>p</th>
+                    <th>{t('quant.adjustedP')}</th>
                     <th>{t('quant.spearman')}</th>
+                    <th>p</th>
+                    <th>{t('quant.adjustedP')}</th>
                     <th>n</th>
                   </tr>
                 </thead>
                 <tbody>
                   {correlationRows.length === 0 ? (
                     <tr>
-                      <td colSpan={4}>{t('quant.noCorrelation')}</td>
+                      <td colSpan={8}>{t('quant.noCorrelation')}</td>
                     </tr>
                   ) : (
                     correlationRows.slice(0, 40).map((row) => (
                       <tr key={`${row.left}-${row.right}`}>
                         <td>{row.left} × {row.right}</td>
                         <td>{formatNumber(row.pearson)}</td>
+                        <td>{formatNumber(row.pearsonPValue, 4)}</td>
+                        <td>{formatNumber(row.pearsonQValue, 4)}</td>
                         <td>{formatNumber(row.spearman)}</td>
+                        <td>{formatNumber(row.spearmanPValue, 4)}</td>
+                        <td>{formatNumber(row.spearmanQValue, 4)}</td>
                         <td>{row.n}</td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="table-wrap">
+              <table className="analysis-table">
+                <thead>
+                  <tr>
+                    <th>{t('quant.pairwiseContrasts')}</th>
+                    <th>{t('quant.factorDimension')}</th>
+                    <th>{t('quant.contrast')}</th>
+                    <th>{t('quant.leftMean')}</th>
+                    <th>{t('quant.rightMean')}</th>
+                    <th>{t('quant.difference')}</th>
+                    <th>t</th>
+                    <th>{t('quant.df')}</th>
+                    <th>p</th>
+                    <th>{t('quant.adjustedP')}</th>
+                    <th>{t('quant.cohenD')}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {pairwiseRows.length === 0 ? (
+                    <tr>
+                      <td colSpan={11}>{t('quant.noPairwiseContrasts')}</td>
+                    </tr>
+                  ) : (
+                    pairwiseRows.slice(0, 80).map((row) => (
+                      <tr key={`${row.group}-${row.leftLevel}-${row.rightLevel}`}>
+                        <td>{row.group}</td>
+                        <td>{t(`quant.factor_${row.factor}`)}</td>
+                        <td>{row.leftLevel} - {row.rightLevel}</td>
+                        <td>{formatNumber(row.leftMean)}</td>
+                        <td>{formatNumber(row.rightMean)}</td>
+                        <td>{formatNumber(row.difference)}</td>
+                        <td>{formatNumber(row.tStatistic)}</td>
+                        <td>{formatNumber(row.df, 1)}</td>
+                        <td>{formatNumber(row.pValue, 4)}</td>
+                        <td>{formatNumber(row.qValue, 4)}</td>
+                        <td>{formatNumber(row.cohenD)}</td>
                       </tr>
                     ))
                   )}
