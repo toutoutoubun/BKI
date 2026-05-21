@@ -71,6 +71,22 @@ interface TrendRow {
   lastValue: number;
 }
 
+interface ModelRow {
+  group: string;
+  factor: FactorDimension;
+  n: number;
+  levels: number;
+  fStatistic: number;
+  dfBetween: number;
+  dfWithin: number;
+  fPValue: number;
+  etaSquared: number;
+  omegaSquared: number;
+  kruskalH: number;
+  kruskalPValue: number;
+  epsilonSquared: number;
+}
+
 const factorDimensions: FactorDimension[] = ['category', 'author', 'language', 'tag'];
 
 function escapeRegExp(value: string) {
@@ -165,6 +181,43 @@ function linearRegression(xs: number[], ys: number[]) {
   return { slope, intercept, rSquared: r ** 2 };
 }
 
+function betaContinuedFraction(a: number, b: number, x: number) {
+  const maxIterations = 100;
+  const epsilon = 3e-7;
+  const fpMin = 1e-30;
+  const qab = a + b;
+  const qap = a + 1;
+  const qam = a - 1;
+  let c = 1;
+  let d = 1 - (qab * x) / qap;
+  if (Math.abs(d) < fpMin) d = fpMin;
+  d = 1 / d;
+  let h = d;
+
+  for (let iteration = 1; iteration <= maxIterations; iteration += 1) {
+    const m2 = 2 * iteration;
+    let numerator = (iteration * (b - iteration) * x) / ((qam + m2) * (a + m2));
+    d = 1 + numerator * d;
+    if (Math.abs(d) < fpMin) d = fpMin;
+    c = 1 + numerator / c;
+    if (Math.abs(c) < fpMin) c = fpMin;
+    d = 1 / d;
+    h *= d * c;
+
+    numerator = (-(a + iteration) * (qab + iteration) * x) / ((a + m2) * (qap + m2));
+    d = 1 + numerator * d;
+    if (Math.abs(d) < fpMin) d = fpMin;
+    c = 1 + numerator / c;
+    if (Math.abs(c) < fpMin) c = fpMin;
+    d = 1 / d;
+    const delta = d * c;
+    h *= delta;
+    if (Math.abs(delta - 1) < epsilon) break;
+  }
+
+  return h;
+}
+
 function logGamma(value: number): number {
   const coefficients = [
     676.5203681218851,
@@ -184,6 +237,14 @@ function logGamma(value: number): number {
   });
   const t = z + coefficients.length - 0.5;
   return 0.5 * Math.log(2 * Math.PI) + (z + 0.5) * Math.log(t) - t + Math.log(x);
+}
+
+function regularizedBeta(x: number, a: number, b: number) {
+  if (x <= 0) return 0;
+  if (x >= 1) return 1;
+  const factor = Math.exp(logGamma(a + b) - logGamma(a) - logGamma(b) + a * Math.log(x) + b * Math.log(1 - x));
+  if (x < (a + 1) / (a + b + 2)) return (factor * betaContinuedFraction(a, b, x)) / a;
+  return 1 - (factor * betaContinuedFraction(b, a, 1 - x)) / b;
 }
 
 function regularizedGammaP(a: number, x: number) {
@@ -223,6 +284,13 @@ function regularizedGammaQ(a: number, x: number) {
 function chiSquarePValue(statistic: number, df: number) {
   if (!Number.isFinite(statistic) || statistic < 0 || df <= 0) return 1;
   return regularizedGammaQ(df / 2, statistic / 2);
+}
+
+function fPValue(fStatistic: number, dfBetween: number, dfWithin: number) {
+  if (fStatistic === Number.MAX_VALUE) return 0;
+  if (!Number.isFinite(fStatistic) || fStatistic < 0 || dfBetween <= 0 || dfWithin <= 0) return 1;
+  const x = (dfBetween * fStatistic) / (dfBetween * fStatistic + dfWithin);
+  return 1 - regularizedBeta(x, dfBetween / 2, dfWithin / 2);
 }
 
 function sanitizeColumnName(value: string) {
@@ -296,11 +364,45 @@ trend_models <- lapply(keyword_cols, function(column) {
   )
 }) |> bind_rows()
 
+anova_models <- lapply(keyword_cols, function(column) {
+  formula <- as.formula(paste(column, "~ ${factorDimension}"))
+  model <- aov(formula, data = df)
+  table <- summary(model)[[1]]
+  data.frame(
+    keyword_group = column,
+    factor = "${factorDimension}",
+    f_statistic = table[["F value"]][1],
+    p_value = table[["Pr(>F)"]][1]
+  )
+}) |> bind_rows()
+
+kruskal_models <- lapply(keyword_cols, function(column) {
+  test <- kruskal.test(df[[column]] ~ df[["${factorDimension}"]])
+  data.frame(
+    keyword_group = column,
+    factor = "${factorDimension}",
+    statistic = unname(test$statistic),
+    p_value = test$p.value
+  )
+}) |> bind_rows()
+
+long_tidy <- long |>
+  group_by(keyword_group) |>
+  mutate(
+    z = as.numeric(scale(count)),
+    log1p = log1p(count),
+    rank = min_rank(count)
+  ) |>
+  ungroup()
+
 write_csv(descriptives, "bki-r-descriptives.csv")
 write_csv(as.data.frame(cor_pearson), "bki-r-correlation-pearson.csv")
 write_csv(as.data.frame(cor_spearman), "bki-r-correlation-spearman.csv")
 write_csv(category_models, "bki-r-category-models.csv")
 write_csv(trend_models, "bki-r-trends.csv")
+write_csv(anova_models, "bki-r-anova.csv")
+write_csv(kruskal_models, "bki-r-kruskal.csv")
+write_csv(long_tidy, "bki-r-long-tidy.csv")
 `;
 }
 
@@ -323,8 +425,8 @@ function RStatsPanel({ documents }: Props) {
   );
 
   const documentFrame = useMemo<DocumentFrameRow[]>(
-    () =>
-      documents.map((document) => {
+    () => {
+      const baseRows = documents.map((document) => {
         const words = wordCount(document.content);
         const row: DocumentFrameRow = {
           document_id: document.id,
@@ -342,9 +444,25 @@ function RStatsPanel({ documents }: Props) {
           row[`${group.column}_count`] = count;
           row[`${group.column}_per_1000_words`] = words ? (count / words) * 1000 : 0;
           row[`${group.column}_present`] = count > 0 ? 1 : 0;
+          row[`${group.column}_log1p`] = Math.log1p(count);
         });
         return row;
-      }),
+      });
+
+      activeGroups.forEach((group) => {
+        const counts = baseRows.map((row) => Number(row[`${group.column}_count`] ?? 0));
+        const average = mean(counts);
+        const sd = standardDeviation(counts);
+        const ranked = ranks(counts);
+        baseRows.forEach((row, index) => {
+          const count = Number(row[`${group.column}_count`] ?? 0);
+          row[`${group.column}_z`] = sd ? (count - average) / sd : 0;
+          row[`${group.column}_rank`] = ranked[index] ?? 0;
+        });
+      });
+
+      return baseRows;
+    },
     [activeGroups, documents],
   );
 
@@ -445,6 +563,72 @@ function RStatsPanel({ documents }: Props) {
     return rows.sort((left, right) => right.etaSquared - left.etaSquared || right.mean - left.mean);
   }, [activeGroups, documentFrame, documents, factorDimension]);
 
+  const modelRows = useMemo<ModelRow[]>(() => {
+    const rows: ModelRow[] = [];
+    activeGroups.forEach((group) => {
+      const observations = documents.flatMap((document) =>
+        factorValues(document, factorDimension).map((level) => ({
+          level,
+          count: Number(documentFrame.find((row) => row.document_id === document.id)?.[`${group.column}_count`] ?? 0),
+        })),
+      );
+      const levels = [...new Set(observations.map((item) => item.level))].sort();
+      const allCounts = observations.map((item) => item.count);
+      const n = allCounts.length;
+      const grandMean = mean(allCounts);
+      const totalSs = allCounts.reduce((sum, value) => sum + (value - grandMean) ** 2, 0);
+      let betweenSs = 0;
+      let withinSs = 0;
+      levels.forEach((level) => {
+        const levelCounts = observations.filter((item) => item.level === level).map((item) => item.count);
+        const levelMean = mean(levelCounts);
+        betweenSs += levelCounts.length * (levelMean - grandMean) ** 2;
+        withinSs += levelCounts.reduce((sum, value) => sum + (value - levelMean) ** 2, 0);
+      });
+      const dfBetween = Math.max(0, levels.length - 1);
+      const dfWithin = Math.max(0, n - levels.length);
+      const msBetween = dfBetween ? betweenSs / dfBetween : 0;
+      const msWithin = dfWithin ? withinSs / dfWithin : 0;
+      const fStatistic = msWithin ? msBetween / msWithin : msBetween ? Number.MAX_VALUE : 0;
+      const pValue = fPValue(fStatistic, dfBetween, dfWithin);
+      const etaSquared = totalSs ? betweenSs / totalSs : 0;
+      const omegaSquared = totalSs + msWithin ? Math.max(0, (betweenSs - dfBetween * msWithin) / (totalSs + msWithin)) : 0;
+
+      const rankedCounts = ranks(allCounts);
+      let rankCursor = 0;
+      const rankByLevel = new Map<string, number[]>();
+      observations.forEach((observation) => {
+        rankByLevel.set(observation.level, [...(rankByLevel.get(observation.level) ?? []), rankedCounts[rankCursor]]);
+        rankCursor += 1;
+      });
+      let kruskalH = 0;
+      rankByLevel.forEach((rankValues) => {
+        const rankTotal = rankValues.reduce((sum, value) => sum + value, 0);
+        kruskalH += rankTotal ** 2 / rankValues.length;
+      });
+      kruskalH = n ? (12 / (n * (n + 1))) * kruskalH - 3 * (n + 1) : 0;
+      const kruskalPValue = chiSquarePValue(kruskalH, dfBetween);
+      const epsilonSquared = n > levels.length ? Math.max(0, (kruskalH - levels.length + 1) / (n - levels.length)) : 0;
+
+      rows.push({
+        group: group.name,
+        factor: factorDimension,
+        n,
+        levels: levels.length,
+        fStatistic,
+        dfBetween,
+        dfWithin,
+        fPValue: pValue,
+        etaSquared,
+        omegaSquared,
+        kruskalH,
+        kruskalPValue,
+        epsilonSquared,
+      });
+    });
+    return rows.sort((left, right) => left.fPValue - right.fPValue || right.etaSquared - left.etaSquared);
+  }, [activeGroups, documentFrame, documents, factorDimension]);
+
   const trendRows = useMemo<TrendRow[]>(() => {
     const sortedFrame = [...documentFrame].sort((left, right) => {
       const leftDate = left.date ? Date.parse(String(left.date)) : Number.NaN;
@@ -476,7 +660,29 @@ function RStatsPanel({ documents }: Props) {
   const strongestCorrelation = correlationRows[0];
   const strongestEffect = categoryEffectRows[0];
   const strongestTrend = trendRows[0];
+  const strongestModel = modelRows[0];
   const hasData = documentFrame.length > 0 && activeGroups.length > 0;
+
+  const tidyRows = () =>
+    documentFrame.flatMap((row) =>
+      activeGroups.map((group) => ({
+        document_id: row.document_id,
+        document: row.document,
+        category: row.category,
+        author: row.author,
+        language: row.language,
+        tags: row.tags,
+        date: row.date,
+        keyword_group: group.name,
+        variable: `${group.column}_count`,
+        count: row[`${group.column}_count`],
+        per_1000_words: row[`${group.column}_per_1000_words`],
+        present: row[`${group.column}_present`],
+        z: row[`${group.column}_z`],
+        log1p: row[`${group.column}_log1p`],
+        rank: row[`${group.column}_rank`],
+      })),
+    );
 
   const statsRows = () => [
     ...descriptiveRows.map((row) => ({
@@ -515,6 +721,22 @@ function RStatsPanel({ documents }: Props) {
       cramers_v: row.cramersV,
       eta_squared: row.etaSquared,
     })),
+    ...modelRows.map((row) => ({
+      section: 'factor_model',
+      group: row.group,
+      factor: row.factor,
+      n: row.n,
+      levels: row.levels,
+      f_statistic: row.fStatistic,
+      df_between: row.dfBetween,
+      df_within: row.dfWithin,
+      f_p_value: row.fPValue,
+      eta_squared: row.etaSquared,
+      omega_squared: row.omegaSquared,
+      kruskal_h: row.kruskalH,
+      kruskal_p_value: row.kruskalPValue,
+      epsilon_squared: row.epsilonSquared,
+    })),
     ...trendRows.map((row) => ({
       section: 'trend',
       group: row.group,
@@ -552,6 +774,19 @@ function RStatsPanel({ documents }: Props) {
     });
   };
 
+  const exportTidyFrame = () => {
+    const rows = tidyRows();
+    if (!rows.length) return;
+    downloadText('bki-r-long-tidy.csv', toCsv(rows), 'text/csv;charset=utf-8');
+    addLog({
+      level: 'success',
+      stage: 'analysis.r_stats',
+      title: 'R tidy long frame exported',
+      detail: `${rows.length} tidy row(s) were exported.`,
+      data: { rowCount: rows.length, factorDimension },
+    });
+  };
+
   const exportRScript = () => {
     if (!activeGroups.length) return;
     const columns = activeGroups.map((group) => `${group.column}_count`);
@@ -577,6 +812,10 @@ function RStatsPanel({ documents }: Props) {
           <button className="ghost-button" type="button" disabled={!hasData} onClick={exportStats}>
             <Download size={17} />
             {t('quant.exportRStats')}
+          </button>
+          <button className="ghost-button" type="button" disabled={!hasData} onClick={exportTidyFrame}>
+            <Download size={17} />
+            {t('quant.exportTidyFrame')}
           </button>
           <button className="ghost-button" type="button" disabled={!activeGroups.length} onClick={exportRScript}>
             <Download size={17} />
@@ -607,6 +846,10 @@ function RStatsPanel({ documents }: Props) {
                 <strong>{strongestEffect ? formatNumber(strongestEffect.etaSquared, 2) : 'n/a'}</strong>
               </div>
               <div className="insight-tile">
+                <span>{t('quant.strongestModel')}</span>
+                <strong>{strongestModel ? formatNumber(strongestModel.fPValue, 3) : 'n/a'}</strong>
+              </div>
+              <div className="insight-tile">
                 <span>{t('quant.strongestTrend')}</span>
                 <strong>{strongestTrend ? formatNumber(strongestTrend.rSquared, 2) : 'n/a'}</strong>
               </div>
@@ -630,6 +873,41 @@ function RStatsPanel({ documents }: Props) {
                   <p>{t('quant.rFormulaHint')}</p>
                 </div>
               </div>
+            </div>
+
+            <div className="table-wrap">
+              <table className="analysis-table">
+                <thead>
+                  <tr>
+                    <th>{t('quant.factorModels')}</th>
+                    <th>{t('quant.factorDimension')}</th>
+                    <th>{t('quant.levels')}</th>
+                    <th>F</th>
+                    <th>p</th>
+                    <th>η²</th>
+                    <th>ω²</th>
+                    <th>H</th>
+                    <th>{t('quant.kruskalP')}</th>
+                    <th>ε²</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {modelRows.map((row) => (
+                    <tr key={`${row.group}-${row.factor}`}>
+                      <td>{row.group}</td>
+                      <td>{t(`quant.factor_${row.factor}`)}</td>
+                      <td>{row.levels}</td>
+                      <td>{formatNumber(row.fStatistic)}</td>
+                      <td>{formatNumber(row.fPValue, 4)}</td>
+                      <td>{formatNumber(row.etaSquared)}</td>
+                      <td>{formatNumber(row.omegaSquared)}</td>
+                      <td>{formatNumber(row.kruskalH)}</td>
+                      <td>{formatNumber(row.kruskalPValue, 4)}</td>
+                      <td>{formatNumber(row.epsilonSquared)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
 
             <div className="table-wrap">
