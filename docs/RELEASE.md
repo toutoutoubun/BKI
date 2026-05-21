@@ -6,6 +6,7 @@ BKI can be released as desktop installers for macOS, Windows, and Linux through 
 
 - `.github/workflows/ci.yml` validates every push and pull request to `main` on Ubuntu, macOS, and Windows.
 - `.github/workflows/release-desktop.yml` builds draft GitHub Releases for tags that start with `v`, or from manual workflow dispatch.
+- macOS builds are unsigned by default so a missing or invalid Apple certificate cannot block normal release artifacts.
 - The Tauri bundle includes the `python/` sidecar directory as an application resource.
 - The desktop app resolves `python/main.py` from the development tree first, then from the bundled app resources.
 
@@ -40,7 +41,7 @@ The current release bundle includes BKI's Python analysis code, but it does not 
    git push origin v0.1.0
    ```
 
-   You can also run the `release-desktop` workflow manually and provide the same tag.
+   You can also run the `release-desktop` workflow manually and provide the same tag. Leave `macos_signing` disabled unless the Apple signing secrets have been validated.
 
 5. Review the draft release assets:
 
@@ -52,7 +53,7 @@ The current release bundle includes BKI's Python analysis code, but it does not 
 
 ## Optional signing secrets
 
-macOS code signing and notarization are used automatically when these repository secrets are configured:
+The release workflow does not pass Apple signing variables by default. To produce signed/notarized macOS artifacts, run the workflow manually with `macos_signing` enabled after configuring these repository secrets:
 
 - `APPLE_CERTIFICATE`
 - `APPLE_CERTIFICATE_PASSWORD`
@@ -62,3 +63,5 @@ macOS code signing and notarization are used automatically when these repository
 - `APPLE_TEAM_ID`
 
 Windows code signing is not configured yet. Add it before distributing trusted production installers at scale.
+
+If macOS signing fails with `SecKeychainItemImport`, the certificate secret is usually not a valid base64-encoded `.p12` certificate or the password does not match it. Disable `macos_signing` to produce unsigned test artifacts while the certificate is fixed.

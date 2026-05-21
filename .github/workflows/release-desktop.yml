@@ -10,6 +10,11 @@ on:
         description: "Release tag to create, for example v0.1.0"
         required: true
         type: string
+      macos_signing:
+        description: "Enable macOS code signing and notarization. Requires valid Apple secrets."
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: write
@@ -79,6 +84,46 @@ jobs:
         run: npm run python:test
 
       - name: Build and upload desktop bundles
+        if: ${{ matrix.platform != 'macos-latest' || !inputs.macos_signing }}
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: ${{ env.BKI_RELEASE_TAG }}
+          releaseName: "BKI ${{ env.BKI_RELEASE_TAG }}"
+          releaseBody: |
+            Desktop installers for BKI.
+
+            Notes:
+            - The Python analysis sidecar is bundled as an application resource.
+            - A Python runtime must be available on PATH (`python3` on macOS/Linux, `python` on Windows), or set `BKI_PYTHON`.
+            - macOS artifacts are unsigned by default. Run this workflow manually with macOS signing enabled after configuring valid Apple secrets to produce signed/notarized macOS artifacts.
+          releaseDraft: true
+          prerelease: ${{ contains(env.BKI_RELEASE_TAG, '-') }}
+          args: ${{ matrix.tauri-args }}
+
+      - name: Validate Apple signing secrets
+        if: ${{ matrix.platform == 'macos-latest' && inputs.macos_signing }}
+        shell: bash
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          missing=0
+          for name in APPLE_CERTIFICATE APPLE_CERTIFICATE_PASSWORD APPLE_SIGNING_IDENTITY APPLE_ID APPLE_PASSWORD APPLE_TEAM_ID; do
+            if [ -z "${!name}" ]; then
+              echo "::error::Missing required secret: ${name}"
+              missing=1
+            fi
+          done
+          exit "${missing}"
+
+      - name: Build and upload signed macOS bundle
+        if: ${{ matrix.platform == 'macos-latest' && inputs.macos_signing }}
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -97,7 +142,7 @@ jobs:
             Notes:
             - The Python analysis sidecar is bundled as an application resource.
             - A Python runtime must be available on PATH (`python3` on macOS/Linux, `python` on Windows), or set `BKI_PYTHON`.
-            - macOS notarization and code signing are used automatically when the Apple signing secrets are configured.
+            - macOS signing/notarization was requested for this workflow run.
           releaseDraft: true
           prerelease: ${{ contains(env.BKI_RELEASE_TAG, '-') }}
           args: ${{ matrix.tauri-args }}
