@@ -1,20 +1,21 @@
 import { Activity, BarChart3, BookOpen, FileDown, FlaskConical, Languages, Settings, Tags } from 'lucide-react';
-import { useEffect, useMemo, useState } from 'react';
+import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import AboutModal from './components/AboutModal';
 import CorpusPanel from './components/CorpusPanel';
-import ExportTab from './components/ExportTab';
-import GuideModal from './components/GuideModal';
 import PersistenceBridge from './components/PersistenceBridge';
-import ProcessInspector from './components/ProcessInspector';
-import PreprocessTab from './components/PreprocessTab';
-import QdaTab from './components/QdaTab';
-import QuantTab from './components/QuantTab';
 import { loadAddonLocales } from './lib/languageAddons';
 import { useCorpusStore } from './store/corpusStore';
 import { useProcessStore } from './store/processStore';
 
 type TabId = 'preprocess' | 'qualitative' | 'quantitative' | 'export';
+
+const AboutModal = lazy(() => import('./components/AboutModal'));
+const ExportTab = lazy(() => import('./components/ExportTab'));
+const GuideModal = lazy(() => import('./components/GuideModal'));
+const ProcessInspector = lazy(() => import('./components/ProcessInspector'));
+const PreprocessTab = lazy(() => import('./components/PreprocessTab'));
+const QdaTab = lazy(() => import('./components/QdaTab'));
+const QuantTab = lazy(() => import('./components/QuantTab'));
 
 const tabIcons = {
   preprocess: FlaskConical,
@@ -29,6 +30,14 @@ const baseInterfaceLanguages = [
   { code: 'fr', name: 'Français' },
   { code: 'af', name: 'Afrikaans' },
 ];
+
+function LoadingPane({ label }: { label: string }) {
+  return (
+    <div className="empty-state" aria-live="polite">
+      {label}
+    </div>
+  );
+}
 
 function App() {
   const { t, i18n } = useTranslation();
@@ -52,7 +61,7 @@ function App() {
     [t],
   );
 
-  const selectedDocuments = documents.filter((doc) => selectedIds.includes(doc.id));
+  const selectedDocuments = useMemo(() => documents.filter((doc) => selectedIds.includes(doc.id)), [documents, selectedIds]);
   const activeDocuments = selectedDocuments.length ? selectedDocuments : documents;
 
   const changeLanguage = async (language: string) => {
@@ -149,10 +158,12 @@ function App() {
           </nav>
 
           <div className="tab-content">
-            {activeTab === 'preprocess' && <PreprocessTab documents={activeDocuments} />}
-            {activeTab === 'qualitative' && <QdaTab documents={activeDocuments} />}
-            {activeTab === 'quantitative' && <QuantTab documents={activeDocuments} />}
-            {activeTab === 'export' && <ExportTab documents={documents} />}
+            <Suspense fallback={<LoadingPane label={t('common.loading')} />}>
+              {activeTab === 'preprocess' && <PreprocessTab documents={activeDocuments} />}
+              {activeTab === 'qualitative' && <QdaTab documents={activeDocuments} />}
+              {activeTab === 'quantitative' && <QuantTab documents={activeDocuments} />}
+              {activeTab === 'export' && <ExportTab documents={documents} />}
+            </Suspense>
           </div>
         </section>
       </main>
@@ -163,9 +174,11 @@ function App() {
         <span>{t('status.localOnly')}</span>
         {isProcessOpen && <span>{t('process.modeActive')}</span>}
       </footer>
-      {isProcessOpen && <ProcessInspector />}
-      {isGuideOpen && <GuideModal onClose={closeGuide} />}
-      {isAboutOpen && <AboutModal onClose={() => setIsAboutOpen(false)} />}
+      <Suspense fallback={null}>
+        {isProcessOpen && <ProcessInspector />}
+        {isGuideOpen && <GuideModal onClose={closeGuide} />}
+        {isAboutOpen && <AboutModal onClose={() => setIsAboutOpen(false)} />}
+      </Suspense>
     </div>
   );
 }

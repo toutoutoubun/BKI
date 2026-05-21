@@ -14,6 +14,7 @@
     "run": "Run",
     "download": "Download",
     "none": "None",
+    "loading": "Loading",
     "action": "Action"
   },
   "corpus": {

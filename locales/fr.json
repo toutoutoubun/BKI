@@ -14,6 +14,7 @@
     "run": "Exécuter",
     "download": "Télécharger",
     "none": "Aucun",
+    "loading": "Chargement",
     "action": "Action"
   },
   "corpus": {

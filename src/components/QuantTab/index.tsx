@@ -1,5 +1,5 @@
 import { Download, Play, Plus, RefreshCw, Save, Trash2, Upload } from 'lucide-react';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   CartesianGrid,
@@ -15,13 +15,14 @@ import { deleteAnalysisConfig, listAnalysisConfigs, saveAnalysisConfig, type Ana
 import { useAnalysisStore } from '../../store/analysisStore';
 import { useProcessStore } from '../../store/processStore';
 import type { CorpusDocument, KeywordGroup } from '../../types';
-import NlpPanel from './NlpPanel';
-import RStatsPanel from './RStatsPanel';
-import TextMiningPanel from './TextMiningPanel';
 
 interface Props {
   documents: CorpusDocument[];
 }
+
+const NlpPanel = lazy(() => import('./NlpPanel'));
+const RStatsPanel = lazy(() => import('./RStatsPanel'));
+const TextMiningPanel = lazy(() => import('./TextMiningPanel'));
 
 type FrequencyGroupBy = 'month' | 'year' | 'document' | 'category';
 
@@ -563,9 +564,15 @@ function QuantTab({ documents }: Props) {
           )}
         </div>
       </section>
-      <RStatsPanel documents={documents} />
-      <TextMiningPanel documents={documents} />
-      <NlpPanel documents={documents} />
+      <Suspense fallback={<div className="empty-state">{t('common.loading')}</div>}>
+        <RStatsPanel documents={documents} />
+      </Suspense>
+      <Suspense fallback={<div className="empty-state">{t('common.loading')}</div>}>
+        <TextMiningPanel documents={documents} />
+      </Suspense>
+      <Suspense fallback={<div className="empty-state">{t('common.loading')}</div>}>
+        <NlpPanel documents={documents} />
+      </Suspense>
     </div>
   );
 }
