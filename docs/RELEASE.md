@@ -6,7 +6,8 @@ BKI can be released as desktop installers for macOS, Windows, and Linux through 
 
 - `.github/workflows/ci.yml` validates every push and pull request to `main` on Ubuntu, macOS, and Windows.
 - `.github/workflows/release-desktop.yml` builds draft GitHub Releases for tags that start with `v`, or from manual workflow dispatch.
-- macOS builds are unsigned by default so a missing or invalid Apple certificate cannot block normal release artifacts.
+- macOS builds use ad-hoc signing by default (`APPLE_SIGNING_IDENTITY=-`) so a missing or invalid Apple certificate cannot block normal release artifacts.
+- Every platform build is also uploaded as a GitHub Actions artifact, independent of the draft release assets.
 - The Tauri bundle includes the `python/` sidecar directory as an application resource.
 - The desktop app resolves `python/main.py` from the development tree first, then from the bundled app resources.
 
@@ -45,7 +46,7 @@ The current release bundle includes BKI's Python analysis code, but it does not 
 
 5. Review the draft release assets:
 
-   - macOS: DMG and app archive from the universal build
+   - macOS: DMG and app bundle from the universal build
    - Windows: MSI/NSIS installer artifacts from Tauri
    - Linux: DEB/RPM/AppImage artifacts from Tauri, depending on the runner toolchain
 
@@ -53,7 +54,7 @@ The current release bundle includes BKI's Python analysis code, but it does not 
 
 ## Optional signing secrets
 
-The release workflow does not pass Apple signing variables by default. To produce signed/notarized macOS artifacts, run the workflow manually with `macos_signing` enabled after configuring these repository secrets:
+The release workflow does not pass Apple certificate variables by default. It uses Tauri's ad-hoc signing identity `-` for certificate-free macOS artifacts. To produce Apple Developer ID signed/notarized macOS artifacts, run the workflow manually with `macos_signing` enabled after configuring these repository secrets:
 
 - `APPLE_CERTIFICATE`
 - `APPLE_CERTIFICATE_PASSWORD`
@@ -64,4 +65,4 @@ The release workflow does not pass Apple signing variables by default. To produc
 
 Windows code signing is not configured yet. Add it before distributing trusted production installers at scale.
 
-If macOS signing fails with `SecKeychainItemImport`, the certificate secret is usually not a valid base64-encoded `.p12` certificate or the password does not match it. Disable `macos_signing` to produce unsigned test artifacts while the certificate is fixed.
+If macOS signing fails with `SecKeychainItemImport`, the certificate secret is usually not a valid base64-encoded `.p12` certificate or the password does not match it. Disable `macos_signing` to produce ad-hoc signed test artifacts while the certificate is fixed.
